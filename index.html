@@ -1,0 +1,1149 @@
+<!DOCTYPE html>
+<html lang="lo">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+  <title>Badminton Finder</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/2.2.19/tailwind.min.css"/>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css"/>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Lao+Looped:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+  <style>
+    /* ─────────────── TOKENS ─────────────── */
+    :root {
+      --bg:         #e8eef7;          /* soft blue-grey canvas */
+      --glass-bg:   rgba(255,255,255,0.68);
+      --glass-hi:   rgba(255,255,255,0.88);
+      --glass-lo:   rgba(255,255,255,0.42);
+      --glass-rim:  rgba(255,255,255,0.75);
+      --glass-dim:  rgba(0,0,0,0.06);
+      --blur:       blur(22px) saturate(180%);
+      --shadow-xs:  0 1px 4px rgba(0,0,0,0.06);
+      --shadow-sm:  0 4px 16px rgba(0,0,0,0.09);
+      --shadow-md:  0 8px 32px rgba(0,0,0,0.13);
+      --shadow-lg:  0 20px 60px rgba(0,0,0,0.18);
+      --accent:     #1d6aff;
+      --accent2:    #34c759;
+      --danger:     #ff3b30;
+      --warn:       #ff9f0a;
+      --radius-sm:  12px;
+      --radius-md:  18px;
+      --radius-lg:  24px;
+    }
+
+    /* ─────────────── RESET / BASE ─────────────── */
+    *, *::before, *::after { box-sizing: border-box; }
+    html, body {
+      margin: 0; padding: 0;
+      width: 100%; max-width: 100%;
+      overflow-x: hidden;                   /* FIX horizontal scroll */
+      font-family: 'Noto Sans Lao Looped', -apple-system, sans-serif;
+      background: var(--bg);
+      color: #1c1c1e;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    /* animated mesh gradient bg */
+    body::before {
+      content: '';
+      position: fixed; inset: 0; z-index: -1;
+      background:
+        radial-gradient(ellipse 80% 50% at 20% 20%, rgba(120,160,255,0.35) 0%, transparent 60%),
+        radial-gradient(ellipse 60% 60% at 80% 80%, rgba(52,199,89,0.18) 0%, transparent 55%),
+        radial-gradient(ellipse 70% 40% at 60% 10%, rgba(255,159,10,0.12) 0%, transparent 50%),
+        linear-gradient(160deg, #dce9ff 0%, #e8f5e9 50%, #fff3e0 100%);
+      pointer-events: none;
+    }
+
+    /* ─────────────── GLASS MIXIN ─────────────── */
+    .glass {
+      background: var(--glass-bg);
+      backdrop-filter: var(--blur);
+      -webkit-backdrop-filter: var(--blur);
+      border: 1px solid var(--glass-rim);
+      border-top-color: rgba(255,255,255,0.92);
+    }
+    .glass-sm {
+      background: var(--glass-hi);
+      backdrop-filter: blur(16px) saturate(160%);
+      -webkit-backdrop-filter: blur(16px) saturate(160%);
+      border: 1px solid rgba(255,255,255,0.70);
+    }
+
+    /* ─────────────── TAB BAR ─────────────── */
+    #tabBar {
+      position: fixed; top: 0; left: 0; right: 0; height: 56px;
+      z-index: 900;
+      display: flex; align-items: stretch;
+      background: rgba(248,250,255,0.82);
+      backdrop-filter: blur(24px) saturate(200%);
+      -webkit-backdrop-filter: blur(24px) saturate(200%);
+      border-bottom: 1px solid rgba(255,255,255,0.60);
+      box-shadow: var(--shadow-sm);
+    }
+    .tab-btn {
+      flex: 1; display: flex; align-items: center; justify-content: center;
+      gap: 7px; font-size: 13px; font-weight: 600; letter-spacing: 0.01em;
+      color: rgba(60,60,67,0.55); background: none; border: none;
+      border-bottom: 2.5px solid transparent; cursor: pointer;
+      font-family: inherit; transition: color .2s, border-color .2s;
+    }
+    .tab-btn.active { color: var(--accent); border-color: var(--accent); }
+    .tab-btn i { font-size: 15px; }
+
+    /* ─────────────── MAP PAGE ─────────────── */
+    #mapPage { position: fixed; inset: 56px 0 0 0; }
+    #map { position: absolute; inset: 0; z-index: 1; }
+
+    /* ─────────────── FLOATING SEARCH ─────────────── */
+    .map-top-bar {
+      position: absolute; top: 12px; left: 12px; right: 12px;
+      z-index: 20; display: flex; gap: 10px; pointer-events: none;
+    }
+    .map-top-bar > * { pointer-events: auto; }
+    .search-pill {
+      flex: 1; height: 48px; display: flex; align-items: center;
+      gap: 10px; padding: 0 16px;
+      background: var(--glass-bg);
+      backdrop-filter: var(--blur); -webkit-backdrop-filter: var(--blur);
+      border: 1px solid var(--glass-rim);
+      border-top-color: rgba(255,255,255,0.95);
+      box-shadow: var(--shadow-md);
+      border-radius: var(--radius-md);
+    }
+    .search-pill input {
+      flex: 1; background: none; border: none; outline: none;
+      font-family: inherit; font-size: 14px; color: #1c1c1e;
+    }
+    .search-pill input::placeholder { color: rgba(60,60,67,0.4); }
+    .menu-btn {
+      width: 48px; height: 48px;
+      display: flex; align-items: center; justify-content: center;
+      background: var(--glass-bg);
+      backdrop-filter: var(--blur); -webkit-backdrop-filter: var(--blur);
+      border: 1px solid var(--glass-rim);
+      border-top-color: rgba(255,255,255,0.95);
+      box-shadow: var(--shadow-md);
+      border-radius: var(--radius-sm);
+      color: #3c3c43; font-size: 17px;
+      cursor: pointer; border-top: 1px solid rgba(255,255,255,0.95);
+    }
+
+    /* ─────────────── COURT CARD STRIP (Liquid Glass) ─────────────── */
+    #courtList {
+      position: absolute; bottom: 16px; left: 0; right: 0;
+      z-index: 10; display: flex; gap: 12px;
+      padding: 8px 16px; overflow-x: auto;
+      -webkit-overflow-scrolling: touch; scrollbar-width: none;
+      pointer-events: none;
+    }
+    #courtList::-webkit-scrollbar { display: none; }
+
+    .court-card {
+      pointer-events: auto; flex-shrink: 0;
+      min-width: 272px; max-width: 272px;
+      padding: 15px 15px 13px;
+      border-radius: var(--radius-lg);
+      cursor: pointer;
+      /* Liquid Glass layers */
+      background: linear-gradient(145deg,
+        rgba(255,255,255,0.70) 0%,
+        rgba(255,255,255,0.45) 100%);
+      backdrop-filter: blur(28px) saturate(200%) brightness(1.06);
+      -webkit-backdrop-filter: blur(28px) saturate(200%) brightness(1.06);
+      border: 1px solid rgba(255,255,255,0.80);
+      border-top: 1.5px solid rgba(255,255,255,0.96);
+      box-shadow:
+        inset 0 2px 0 rgba(255,255,255,0.60),
+        inset 0 -1px 0 rgba(0,0,0,0.04),
+        0 12px 40px rgba(0,0,0,0.15),
+        0 2px 8px rgba(0,0,0,0.06);
+      position: relative; overflow: hidden;
+      transition: transform .18s cubic-bezier(.34,1.56,.64,1);
+    }
+    .court-card::after {
+      content: '';
+      position: absolute; top: 0; left: 0; right: 0; height: 44%;
+      background: linear-gradient(180deg,
+        rgba(255,255,255,0.30) 0%, rgba(255,255,255,0) 100%);
+      border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+      pointer-events: none;
+    }
+    .court-card:active { transform: scale(0.97); }
+    .court-card h3 {
+      font-size: 14px; font-weight: 700; margin: 0 0 3px;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .court-card .loc {
+      font-size: 11px; color: rgba(60,60,67,0.65);
+      display: flex; align-items: center; gap: 4px; margin: 0 0 11px;
+    }
+    .cc-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
+    .cc-btn {
+      display: flex; align-items: center; justify-content: center;
+      gap: 5px; padding: 8px 4px;
+      border-radius: 11px; border: none; cursor: pointer;
+      font-family: inherit; font-size: 12px; font-weight: 600;
+      text-decoration: none;
+      backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+      transition: filter .15s, transform .1s;
+    }
+    .cc-btn:active { filter: brightness(.9); transform: scale(.97); }
+    .cc-call  { background: rgba(255,59,48,.10);  color: #ff3b30; }
+    .cc-chat  { background: rgba(52,199,89,.10);  color: #25C244; }
+    .cc-map   { background: rgba(29,106,255,.10); color: var(--accent); }
+    .cc-share { background: rgba(255,159,10,.10); color: #cc7a00; }
+
+    /* ─────────────── FABs ─────────────── */
+    .fab-col {
+      position: absolute; right: 12px; bottom: 192px;
+      z-index: 20; display: flex; flex-direction: column; gap: 9px;
+    }
+    .fab {
+      width: 46px; height: 46px;
+      display: flex; align-items: center; justify-content: center;
+      border-radius: 50%; border: none; cursor: pointer;
+      font-family: inherit; font-size: 17px; color: #fff;
+      text-decoration: none;
+      backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+      border: 1px solid rgba(255,255,255,0.50);
+      box-shadow: 0 4px 16px rgba(0,0,0,0.20), inset 0 1px 0 rgba(255,255,255,0.55);
+      transition: transform .15s;
+    }
+    .fab:active { transform: scale(.90); }
+    .fab-loc    { background: linear-gradient(145deg,#60a5fa,#1d6aff); }
+    .fab-wa1    { background: linear-gradient(145deg,#4ade80,#16a34a); }
+    .fab-wa2    { background: linear-gradient(145deg,#22c55e,#15803d); }
+    .fab-admin  { background: linear-gradient(145deg,#60a5fa,#1d4ed8); font-size: 10px; font-weight: 800; }
+    .fab-donate { background: linear-gradient(145deg,#fbbf24,#d97706); }
+
+    /* ─────────────── SIDEBAR ─────────────── */
+    #sidebar {
+      position: fixed; top: 0; left: 0; bottom: 0; width: 290px;
+      z-index: 3000; padding: 28px 22px;
+      background: rgba(248,250,255,0.88);
+      backdrop-filter: blur(28px) saturate(200%);
+      -webkit-backdrop-filter: blur(28px) saturate(200%);
+      border-right: 1px solid rgba(255,255,255,0.65);
+      box-shadow: var(--shadow-lg);
+      transform: translateX(-100%);
+      transition: transform .3s cubic-bezier(.4,0,.2,1);
+    }
+    #sidebar.open { transform: translateX(0); }
+    #overlay {
+      display: none; position: fixed; inset: 0;
+      background: rgba(0,0,0,0.30); z-index: 2500;
+    }
+    #overlay.show { display: block; }
+    .sb-title {
+      font-size: 17px; font-weight: 700; color: #1c1c1e;
+      margin: 0 0 22px; display: flex; justify-content: space-between; align-items: center;
+    }
+    .sb-close {
+      width: 30px; height: 30px; border-radius: 50%;
+      border: none; background: rgba(120,120,128,.14);
+      color: #3c3c43; cursor: pointer; font-size: 15px;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .f-label {
+      font-size: 10px; font-weight: 700; color: rgba(60,60,67,0.55);
+      text-transform: uppercase; letter-spacing: .06em; margin-bottom: 6px;
+    }
+    .f-select {
+      width: 100%; padding: 11px 14px;
+      border: 1.5px solid rgba(60,60,67,0.15); border-radius: var(--radius-sm);
+      font-family: inherit; font-size: 14px; color: #1c1c1e;
+      background: rgba(255,255,255,0.75); outline: none;
+      backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+    }
+    .btn-blue {
+      width: 100%; padding: 13px;
+      background: var(--accent); color: #fff;
+      border: none; border-radius: var(--radius-sm);
+      font-family: inherit; font-size: 14px; font-weight: 700; cursor: pointer;
+      box-shadow: 0 4px 16px rgba(29,106,255,.35);
+    }
+    .btn-blue:active { filter: brightness(.92); }
+
+    /* ─────────────── POST PAGE ─────────────── */
+    #postPage {
+      display: none; position: fixed; inset: 56px 0 0 0;
+      overflow-y: auto; overflow-x: hidden;             /* FIX scroll */
+      background: transparent; padding: 16px;
+    }
+    #postPage.active { display: block; }
+
+    /* ─────────────── GLASS CARD (form / feed) ─────────────── */
+    .g-card {
+      background: var(--glass-bg);
+      backdrop-filter: var(--blur); -webkit-backdrop-filter: var(--blur);
+      border: 1px solid var(--glass-rim);
+      border-top-color: rgba(255,255,255,0.94);
+      border-radius: var(--radius-lg);
+      padding: 20px;
+      box-shadow: var(--shadow-sm);
+      margin-bottom: 14px;
+      width: 100%; max-width: 100%; overflow: hidden;  /* FIX overflow */
+    }
+    .g-card-title {
+      font-size: 15px; font-weight: 700; color: #1c1c1e;
+      margin: 0 0 16px; display: flex; align-items: center; gap: 8px;
+    }
+    .g-card-title i { color: var(--accent); }
+
+    .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 11px; margin-bottom: 11px; }
+    .f-field { display: flex; flex-direction: column; }
+    .f-field > label {
+      font-size: 10px; font-weight: 700; color: rgba(60,60,67,0.55);
+      text-transform: uppercase; letter-spacing: .05em; margin-bottom: 5px;
+    }
+    .f-input {
+      width: 100%;
+      padding: 11px 13px;
+      border: 1.5px solid rgba(60,60,67,0.15); border-radius: var(--radius-sm);
+      font-family: inherit; font-size: 14px; color: #1c1c1e;
+      background: rgba(255,255,255,0.70); outline: none;
+      transition: border-color .2s, box-shadow .2s;
+      box-sizing: border-box;
+    }
+    .f-input:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(29,106,255,.12);
+    }
+    .f-input::placeholder { color: rgba(60,60,67,0.30); }
+
+    /* ─────────────── RANGE LEVEL SELECTOR ─────────────── */
+    .level-label-row {
+      font-size: 10px; font-weight: 700; color: rgba(60,60,67,0.55);
+      text-transform: uppercase; letter-spacing: .05em;
+      margin-bottom: 8px; display: flex; justify-content: space-between;
+    }
+    .level-label-row span { font-size: 11px; font-weight: 600;
+      color: var(--accent); font-style: normal; text-transform: none; letter-spacing: 0; }
+
+    .lv-rail {
+      display: flex; gap: 5px; flex-wrap: nowrap;
+      overflow-x: auto; scrollbar-width: none;
+      padding-bottom: 2px; margin-bottom: 4px;
+    }
+    .lv-rail::-webkit-scrollbar { display: none; }
+
+    .lv-chip {
+      flex-shrink: 0; cursor: pointer; user-select: none;
+      display: flex; flex-direction: column; align-items: center;
+      gap: 2px; padding: 8px 10px;
+      border-radius: 12px;
+      border: 1.5px solid rgba(60,60,67,0.14);
+      background: rgba(255,255,255,0.55);
+      transition: all .15s; position: relative;
+      min-width: 52px;
+    }
+    .lv-chip .lc-code { font-size: 12px; font-weight: 800; color: #3c3c43; }
+    .lv-chip .lc-desc { font-size: 9px; color: rgba(60,60,67,0.50); text-align: center; line-height: 1.2; }
+
+    /* range states */
+    .lv-chip.lv-in-range {
+      background: rgba(29,106,255,0.10);
+      border-color: rgba(29,106,255,0.25);
+    }
+    .lv-chip.lv-in-range .lc-code { color: var(--accent); }
+    .lv-chip.lv-endpoint {
+      background: var(--accent); border-color: var(--accent);
+      box-shadow: 0 4px 12px rgba(29,106,255,0.38);
+    }
+    .lv-chip.lv-endpoint .lc-code,
+    .lv-chip.lv-endpoint .lc-desc { color: #fff; }
+
+    /* hint text */
+    .lv-hint { font-size: 10px; color: rgba(60,60,67,0.40); margin-top: 3px; }
+
+    /* ─────────────── FEED SECTION HEADER ─────────────── */
+    .feed-hdr {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 10px; padding: 0 2px;
+    }
+    .feed-hdr p { font-size: 13px; font-weight: 700; color: rgba(60,60,67,0.65); margin: 0; }
+    .feed-hdr button {
+      border: none; background: none; font-family: inherit;
+      font-size: 12px; color: var(--accent); cursor: pointer; font-weight: 600;
+    }
+
+    /* ─────────────── FEED CARD ─────────────── */
+    .feed-card {
+      width: 100%; max-width: 100%;           /* FIX overflow */
+      margin-bottom: 12px;
+    }
+    .feed-court-btn {
+      display: flex; align-items: center; gap: 6px;
+      font-size: 15px; font-weight: 700; color: #1c1c1e;
+      background: none; border: none; cursor: pointer;
+      font-family: inherit; padding: 0; margin-bottom: 8px;
+      text-align: left;
+    }
+    .feed-court-btn:hover { color: var(--accent); }
+    .feed-meta {
+      font-size: 12px; color: rgba(60,60,67,0.65);
+      display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 9px;
+    }
+    .feed-meta span { display: flex; align-items: center; gap: 4px; }
+    .feed-meta i { font-size: 10px; }
+    .feed-badges { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 11px; }
+    .feed-actions { display: flex; gap: 8px; }
+    .wa-btn {
+      flex: 1; display: flex; align-items: center; justify-content: center;
+      gap: 7px; padding: 11px;
+      background: rgba(52,199,89,0.13); color: #1a9e3d;
+      border: 1px solid rgba(52,199,89,0.22); border-radius: var(--radius-sm);
+      font-family: inherit; font-size: 13px; font-weight: 700;
+      text-decoration: none; cursor: pointer;
+    }
+    .wa-btn:active { background: rgba(52,199,89,0.22); }
+    .del-btn {
+      width: 44px; height: 44px;
+      display: flex; align-items: center; justify-content: center;
+      background: rgba(255,59,48,0.10); color: var(--danger);
+      border: 1px solid rgba(255,59,48,0.18); border-radius: var(--radius-sm);
+      cursor: pointer; font-size: 15px;
+    }
+    .del-btn:active { background: rgba(255,59,48,0.20); }
+
+    /* ─────────────── LEVEL BADGES ─────────────── */
+    .lv-badge {
+      display: inline-flex; align-items: center;
+      padding: 3px 9px; border-radius: 99px;
+      font-size: 11px; font-weight: 700; white-space: nowrap;
+    }
+    .lv-BG       { background: rgba(29,106,255,.12); color: #1d4ed8; }
+    .lv-BGPM     { background: rgba(124,58,237,.12); color: #6d28d9; }
+    .lv-SM       { background: rgba(16,185,129,.12); color: #065f46; }
+    .lv-S        { background: rgba(5,150,105,.14);  color: #047857; }
+    .lv-SN       { background: rgba(245,158,11,.13); color: #92400e; }
+    .lv-N        { background: rgba(239,68,68,.12);  color: #b91c1c; }
+    .lv-P        { background: rgba(220,38,38,.15);  color: #991b1b; }
+    .lv-GD       { background: linear-gradient(90deg,rgba(251,191,36,.20),rgba(239,68,68,.18)); color: #7c2d12; border: 1px solid rgba(245,158,11,.30); }
+
+    /* ─────────────── MODALS ─────────────── */
+    .modal-wrap {
+      display: none; position: fixed; inset: 0;
+      background: rgba(0,0,0,0.45); z-index: 5000;
+      align-items: flex-end; justify-content: center;
+    }
+    .modal-wrap.active { display: flex; }
+    @media(min-width:600px){ .modal-wrap { align-items: center; } }
+    .modal-box {
+      width: 100%; max-width: 420px;
+      background: rgba(250,252,255,0.92);
+      backdrop-filter: blur(28px) saturate(200%);
+      -webkit-backdrop-filter: blur(28px) saturate(200%);
+      border: 1px solid rgba(255,255,255,0.75);
+      border-top: 1.5px solid rgba(255,255,255,0.96);
+      box-shadow: var(--shadow-lg);
+      border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+      padding: 22px; max-height: 90vh; overflow-y: auto;
+    }
+    @media(min-width:600px){ .modal-box { border-radius: var(--radius-lg); } }
+    .modal-handle { width: 36px; height: 4px; background: rgba(60,60,67,0.18); border-radius: 99px; margin: 0 auto 16px; }
+    @media(min-width:600px){ .modal-handle { display: none; } }
+    .modal-title { font-size: 16px; font-weight: 700; text-align: center; margin: 0 0 18px; }
+
+    /* share grid */
+    .share-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 10px; margin-bottom: 14px; }
+    .sh-btn {
+      display: flex; flex-direction: column; align-items: center; gap: 7px;
+      padding: 14px 6px; border-radius: var(--radius-md);
+      border: 1px solid rgba(60,60,67,0.10); background: rgba(255,255,255,0.65);
+      cursor: pointer; font-family: inherit;
+    }
+    .sh-btn:active { background: rgba(255,255,255,0.90); }
+    .sh-btn i { font-size: 27px; }
+    .sh-btn span { font-size: 11px; font-weight: 600; color: rgba(60,60,67,0.75); }
+    .btn-outline {
+      width: 100%; padding: 12px;
+      background: rgba(120,120,128,.10); color: #3c3c43;
+      border: 1px solid rgba(60,60,67,0.14); border-radius: var(--radius-sm);
+      font-family: inherit; font-size: 14px; font-weight: 600; cursor: pointer;
+    }
+
+    /* donate */
+    .qr-center {
+      display: flex; justify-content: center; align-items: center;
+      margin-bottom: 16px;
+    }
+    .qr-center img {
+      width: 176px; height: 176px; object-fit: cover;
+      border-radius: 18px;
+      box-shadow: 0 6px 24px rgba(0,0,0,0.14);
+      border: 2px solid rgba(255,255,255,0.80);
+      display: block;
+    }
+    .acct-row {
+      display: flex; align-items: center; justify-content: space-between;
+      background: rgba(120,120,128,0.08); border-radius: var(--radius-sm);
+      padding: 11px 14px; margin-bottom: 14px;
+      border: 1px solid rgba(60,60,67,0.08);
+    }
+    .acct-row .albl { font-size: 10px; font-weight: 700; color: rgba(60,60,67,0.45); text-transform: uppercase; }
+    .acct-row .anum { font-size: 14px; font-weight: 700; color: var(--accent); }
+    .copy-btn {
+      background: rgba(29,106,255,.12); color: var(--accent);
+      border: none; border-radius: 9px; padding: 7px 12px;
+      font-family: inherit; font-size: 12px; font-weight: 700; cursor: pointer;
+      display: flex; align-items: center; gap: 5px;
+    }
+
+    /* ─────────────── SPINNER / EMPTY ─────────────── */
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .spinner {
+      width: 26px; height: 26px; margin: 24px auto;
+      border: 3px solid rgba(60,60,67,0.12);
+      border-top-color: var(--accent);
+      border-radius: 50%; animation: spin .7s linear infinite;
+    }
+    .empty-st { text-align: center; padding: 28px 16px; color: rgba(60,60,67,0.38); }
+    .empty-st i { font-size: 32px; display: block; margin-bottom: 8px; opacity: .45; }
+    .empty-st p { font-size: 13px; margin: 0; }
+
+    /* ─────────────── TOAST ─────────────── */
+    #toast {
+      position: fixed; bottom: 24px; left: 50%;
+      transform: translateX(-50%) translateY(80px);
+      background: rgba(28,28,30,0.92); color: #fff;
+      padding: 11px 20px; border-radius: 14px;
+      font-size: 13px; font-weight: 600;
+      z-index: 9999; transition: transform .28s;
+      white-space: nowrap; pointer-events: none;
+      backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+    }
+    #toast.show { transform: translateX(-50%) translateY(0); }
+
+    .leaflet-popup-content-wrapper { border-radius: 14px !important; }
+  </style>
+</head>
+<body>
+
+<!-- ══════════════ TAB BAR ══════════════ -->
+<div id="tabBar">
+  <button class="tab-btn active" id="tabMap" onclick="switchTab('map')">
+    <i class="fas fa-map-location-dot"></i> ຄົ້ນຫາເດີ່ນ
+  </button>
+  <button class="tab-btn" id="tabPost" onclick="switchTab('post')">
+    <i class="fas fa-users"></i> ຫາໝູ່ຕີ
+  </button>
+</div>
+
+<!-- ══════════════ MAP PAGE ══════════════ -->
+<div id="mapPage">
+  <div id="map"></div>
+
+  <!-- Search bar -->
+  <div class="map-top-bar">
+    <button class="menu-btn" onclick="toggleSidebar()"><i class="fas fa-bars"></i></button>
+    <div class="search-pill">
+      <i class="fas fa-search" style="color:rgba(60,60,67,0.40);font-size:14px;"></i>
+      <input id="searchInput" type="text" placeholder="ຄົ້ນຫາຊື່ເດີ່ນ..." oninput="searchCourts()"/>
+    </div>
+  </div>
+
+  <!-- Court cards -->
+  <div id="courtList">
+    <div class="court-card" style="min-width:180px;"><div class="spinner"></div></div>
+  </div>
+
+  <!-- FABs -->
+  <div class="fab-col">
+    <button class="fab fab-loc" onclick="getLocation()"><i class="fas fa-crosshairs"></i></button>
+    <a class="fab fab-wa1" href="https://chat.whatsapp.com/JycgEZnpxB0Ie5wG44VIwt?s=sw&p=i&ilr=1&amv=0" target="_blank"><i class="fa-brands fa-whatsapp"></i></a>
+    <a class="fab fab-wa2" href="https://chat.whatsapp.com/HgmsJhXIMp8CdfsAoemCGg?mode=hqrt1" target="_blank"><i class="fa-brands fa-whatsapp"></i></a>
+    <a class="fab fab-admin" href="https://wa.me/8562056782260" target="_blank">Admin</a>
+    <button class="fab fab-donate" onclick="openDonateModal()"><i class="fas fa-mug-hot"></i></button>
+  </div>
+</div>
+
+<!-- ══════════════ POST PAGE ══════════════ -->
+<div id="postPage">
+
+  <div class="g-card">
+    <h2 class="g-card-title"><i class="fas fa-bullhorn"></i> ປະກາດຫາໝູ່ຕີ</h2>
+
+    <!-- ເດີ່ນ + ວັນທີ -->
+    <div class="row2">
+      <div class="f-field">
+        <label>ເດີ່ນຕີດອກ</label>
+        <div style="position:relative;">
+          <select id="selectCourt" class="f-input" style="appearance:none;padding-right:32px;width:100%;"></select>
+          <i class="fas fa-chevron-down" style="position:absolute;right:12px;top:50%;transform:translateY(-50%);color:rgba(60,60,67,0.35);font-size:11px;pointer-events:none;"></i>
+        </div>
+      </div>
+      <div class="f-field">
+        <label>ວັນທີຕີ</label>
+        <input id="postDate" type="date" class="f-input"/>
+      </div>
+    </div>
+
+    <!-- ຊື່ + ເບີ -->
+    <div class="row2">
+      <div class="f-field">
+        <label>ຊື່ຂອງທ່ານ</label>
+        <input id="postName" type="text" class="f-input" placeholder="ໂສມໃຈ..."/>
+      </div>
+      <div class="f-field">
+        <label>ເບີ WhatsApp (8 ຕົວ)</label>
+        <input id="whatsappNumber" type="tel" class="f-input"
+               placeholder="xxxxxxxx"
+               maxlength="8" oninput="this.value=this.value.replace(/[^0-9]/g,'')"/>
+      </div>
+    </div>
+
+    <!-- ຕ້ອງການຈັກຄົນ -->
+    <div class="f-field" style="margin-bottom:13px;">
+      <label>ຕ້ອງການເພີ່ມ (ຄົນ)</label>
+      <input id="peopleCount" type="number" class="f-input" placeholder="2" min="1" max="20"/>
+    </div>
+
+    <!-- RANGE LEVEL SELECTOR -->
+    <div style="margin-bottom:14px;">
+      <div class="level-label-row">
+        <span style="font-size:10px;font-weight:700;letter-spacing:.05em;color:rgba(60,60,67,0.55);text-transform:uppercase;">ລະດັບທີ່ຕ້ອງການ</span>
+        <span id="lvRangeLabel">ກົດເລືອກ</span>
+      </div>
+      <div class="lv-rail" id="lvRail">
+        <!-- chips injected by JS -->
+      </div>
+      <p class="lv-hint">ກົດ 1 ໄລ ຫຼື ກົດ 2 ໄລ ເພື່ອເລືອກຊ່ວງ</p>
+    </div>
+
+    <!-- ເວລາ -->
+    <div class="row2" style="margin-bottom:16px;">
+      <div class="f-field">
+        <label>ໂມງເລີ່ມ</label>
+        <input id="startTime" type="time" class="f-input"/>
+      </div>
+      <div class="f-field">
+        <label>ໂມງເຊົາ</label>
+        <input id="endTime" type="time" class="f-input"/>
+      </div>
+    </div>
+
+    <button class="btn-blue" onclick="submitPost()">
+      <i class="fas fa-paper-plane"></i>&nbsp; ປະກາດ
+    </button>
+  </div>
+
+  <!-- Feed header -->
+  <div class="feed-hdr">
+    <p><i class="fas fa-list-ul" style="margin-right:5px;"></i>ປະກາດຫຼ້າສຸດ</p>
+    <button onclick="loadFeed()"><i class="fas fa-rotate-right"></i> ໂຫຼດໃໝ່</button>
+  </div>
+  <div id="feedContainer"><div class="spinner"></div></div>
+</div>
+
+<!-- ══════════════ SIDEBAR ══════════════ -->
+<div id="sidebar">
+  <div class="sb-title">
+    ຕົວເລືອກ
+    <button class="sb-close" onclick="toggleSidebar()"><i class="fas fa-xmark"></i></button>
+  </div>
+  <div style="margin-bottom:16px;">
+    <p class="f-label">ເລືອກແຂວງ</p>
+    <select id="provinceSelect" class="f-select">
+      <option value="ທັງໝົດ">ທັງໝົດ</option>
+      <option value="ນະຄອນຫຼວງວຽງຈັນ">ນະຄອນຫຼວງວຽງຈັນ</option>
+    </select>
+  </div>
+  <button class="btn-blue" onclick="applySidebarFilter()">
+    <i class="fas fa-check"></i>&nbsp; ຕົກລົງ
+  </button>
+</div>
+<div id="overlay" onclick="toggleSidebar()"></div>
+
+<!-- ══════════════ SHARE MODAL ══════════════ -->
+<div id="shareModal" class="modal-wrap" onclick="closeShareModal()">
+  <div class="modal-box" onclick="event.stopPropagation()">
+    <div class="modal-handle"></div>
+    <p class="modal-title">ແຊຣ໌ເດີ່ນນີ້</p>
+    <div class="share-grid">
+      <button class="sh-btn" onclick="executeShare('wa')">
+        <i class="fa-brands fa-whatsapp" style="color:#25d366;"></i><span>WhatsApp</span>
+      </button>
+      <button class="sh-btn" onclick="executeShare('fb')">
+        <i class="fa-brands fa-facebook-messenger" style="color:#0099ff;"></i><span>Messenger</span>
+      </button>
+      <button class="sh-btn" onclick="executeShare('copy')">
+        <i class="fas fa-copy" style="color:#636366;"></i><span>ຄັດລອກ</span>
+      </button>
+    </div>
+    <button class="btn-outline" onclick="closeShareModal()">ຍົກເລີກ</button>
+  </div>
+</div>
+
+<!-- ══════════════ DONATE MODAL ══════════════ -->
+<div id="donateModal" class="modal-wrap" onclick="closeDonateModal()">
+  <div class="modal-box" onclick="event.stopPropagation()">
+    <div class="modal-handle"></div>
+    <p class="modal-title"><i class="fas fa-mug-hot" style="color:#ff9f0a;"></i>&nbsp;Buy me a coffee</p>
+    <p style="font-size:12px;color:rgba(60,60,67,0.45);text-align:center;margin:-10px 0 16px;">ສະໜັບສະໜູນຄ່າພັດທະນາ</p>
+    <div class="qr-center">
+      <img id="qrImage" src="https://i.ibb.co/sptB0zXX/qr-code.jpg" alt="QR BCEL"/>
+    </div>
+    <div class="acct-row">
+      <div>
+        <p class="albl">ເລກບັນຊີ BCEL</p>
+        <p class="anum" id="accountNumber">096120001693528001</p>
+      </div>
+      <button class="copy-btn" onclick="copyAccountNumber()"><i class="fas fa-copy"></i> ຄັດລອກ</button>
+    </div>
+    <button class="btn-outline" onclick="closeDonateModal()">ປິດ</button>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<!-- ══════════════ SCRIPTS ══════════════ -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+'use strict';
+
+/* ───────────────── STATE ───────────────── */
+var map, markersLayer, userMarker;
+var allCourts = [];
+var currentShareData = null;
+var selectedProvince = "ທັງໝົດ";
+var cardElements = {};
+
+/* ───────────────── LEVEL DATA ───────────────── */
+var LEVELS = [
+  { id:'BG',   code:'BG',   desc:'ເລີ່ມຕົ້ນ',   badgeCls:'lv-BG'   },
+  { id:'BGPM', code:'BG+',  desc:'ສາຍໝົກ',    badgeCls:'lv-BGPM' },
+  { id:'S-',   code:'S-',   desc:'ຢືນຕີ',     badgeCls:'lv-SM'   },
+  { id:'S',    code:'S',    desc:'Step ດີ',  badgeCls:'lv-S'    },
+  { id:'SN',   code:'SN',   desc:'ລ໋ອກໄດ້',   badgeCls:'lv-SN'   },
+  { id:'N',    code:'N',    desc:'Rally ໄວ', badgeCls:'lv-N'    },
+  { id:'P',    code:'P',    desc:'ອາຊີບ',    badgeCls:'lv-P'    },
+  { id:'GD',   code:'GD',   desc:'God',      badgeCls:'lv-GD'   }
+];
+// Map BG+ id back to the stored string "BG ProMax"
+var ID_TO_VALUE = {
+  'BG':'BG','BGPM':'BG ProMax','S-':'S-',
+  'S':'S','SN':'SN','N':'N','P':'P','GD':'GD'
+};
+
+/* ───────────────── RANGE SELECTOR ───────────────── */
+var rangeStart = -1, rangeEnd = -1;
+
+function buildLevelRail() {
+  var rail = document.getElementById('lvRail');
+  rail.innerHTML = '';
+  LEVELS.forEach(function(lv, i) {
+    var chip = document.createElement('div');
+    chip.className = 'lv-chip';
+    chip.setAttribute('data-idx', i);
+    chip.innerHTML = '<span class="lc-code">' + lv.code + '</span><span class="lc-desc">' + lv.desc + '</span>';
+    chip.addEventListener('click', function() { handleLvClick(i); });
+    rail.appendChild(chip);
+  });
+  updateRailUI();
+}
+
+function handleLvClick(idx) {
+  if (rangeStart === -1 || (rangeStart !== -1 && rangeEnd !== -1)) {
+    // First tap: set start
+    rangeStart = idx; rangeEnd = -1;
+  } else {
+    // Second tap: set end (order doesn't matter)
+    rangeEnd = idx;
+    if (rangeEnd < rangeStart) { var t=rangeStart; rangeStart=rangeEnd; rangeEnd=t; }
+  }
+  updateRailUI();
+}
+
+function updateRailUI() {
+  var chips = document.querySelectorAll('#lvRail .lv-chip');
+  var lo = Math.min(rangeStart, rangeEnd === -1 ? rangeStart : rangeEnd);
+  var hi = Math.max(rangeStart, rangeEnd === -1 ? rangeStart : rangeEnd);
+
+  chips.forEach(function(chip, i) {
+    chip.classList.remove('lv-endpoint','lv-in-range');
+    if (rangeStart === -1) return;
+    if (i === lo || i === hi) chip.classList.add('lv-endpoint');
+    else if (i > lo && i < hi) chip.classList.add('lv-in-range');
+  });
+
+  // Label
+  var lbl = document.getElementById('lvRangeLabel');
+  if (rangeStart === -1) { lbl.textContent = 'ກົດເລືອກ'; return; }
+  if (rangeEnd === -1) {
+    lbl.textContent = LEVELS[rangeStart].code + ' (ກົດອີກໄລໜຶ່ງ)';
+  } else {
+    if (lo === hi) lbl.textContent = LEVELS[lo].code;
+    else lbl.textContent = LEVELS[lo].code + ' - ' + LEVELS[hi].code;
+  }
+}
+
+function getSelectedLevelsString() {
+  if (rangeStart === -1) return '';
+  var lo = rangeStart;
+  var hi = rangeEnd === -1 ? rangeStart : rangeEnd;
+  if (lo > hi) { var t=lo; lo=hi; hi=t; }
+  return LEVELS.slice(lo, hi+1).map(function(l) { return ID_TO_VALUE[l.id]; }).join(', ');
+}
+
+/* ───────────────── BADGE HELPER ───────────────── */
+function levelBadges(lvStr) {
+  if (!lvStr) return '';
+  return lvStr.split(',').map(function(s) {
+    s = s.trim();
+    var found = LEVELS.find(function(l) { return ID_TO_VALUE[l.id] === s || l.id === s; });
+    var cls = found ? found.badgeCls : 'lv-BG';
+    return '<span class="lv-badge ' + cls + '">' + s + '</span>';
+  }).join(' ');
+}
+
+/* ───────────────── TOAST ───────────────── */
+function showToast(msg) {
+  var t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  setTimeout(function() { t.classList.remove('show'); }, 2600);
+}
+
+/* ───────────────── TAB SWITCH ───────────────── */
+function switchTab(tab) {
+  var d = document.getElementById('postDate');
+  var today = new Date().toISOString().split('T')[0];
+  if (d && !d.value) { d.value = today; d.min = today; }
+
+  if (tab === 'map') {
+    document.getElementById('mapPage').style.display = 'block';
+    document.getElementById('postPage').classList.remove('active');
+    document.getElementById('tabMap').classList.add('active');
+    document.getElementById('tabPost').classList.remove('active');
+    setTimeout(function(){ if(map) map.invalidateSize(); }, 120);
+  } else {
+    document.getElementById('mapPage').style.display = 'none';
+    document.getElementById('postPage').classList.add('active');
+    document.getElementById('tabPost').classList.add('active');
+    document.getElementById('tabMap').classList.remove('active');
+    populateCourtDropdown();
+    loadFeed();
+  }
+}
+
+/* ───────────────── SIDEBAR ───────────────── */
+function toggleSidebar() {
+  document.getElementById('sidebar').classList.toggle('open');
+  document.getElementById('overlay').classList.toggle('show');
+}
+function applySidebarFilter() {
+  selectedProvince = document.getElementById('provinceSelect').value;
+  filterAndDisplay(); toggleSidebar();
+}
+
+/* ───────────────── MAP INIT (no zoom control) ───────────────── */
+function initMap() {
+  try {
+    map = L.map('map', { zoomControl: false }).setView([17.9634, 102.6132], 13);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; OpenStreetMap'
+    }).addTo(map);
+    markersLayer = L.layerGroup().addTo(map);
+    map.on('click', resetFilterAndDisplay);
+  } catch(e) { console.error('Map init error:', e); }
+}
+
+/* ───────────────── GEOLOCATION ───────────────── */
+function getLocation() {
+  if (!navigator.geolocation) { showToast("ບຣາວເຊີບໍ່ຮອງຮັບ GPS"); return; }
+  navigator.geolocation.getCurrentPosition(function(p) {
+    var lat = p.coords.latitude, lng = p.coords.longitude;
+    if (userMarker) { userMarker.setLatLng([lat,lng]); }
+    else {
+      var ico = L.divIcon({ className:'', iconSize:[16,16], iconAnchor:[8,8],
+        html:'<div style="width:16px;height:16px;border-radius:50%;background:#1d6aff;border:3px solid #fff;box-shadow:0 0 8px rgba(0,0,0,0.30);"></div>'
+      });
+      userMarker = L.marker([lat,lng], { icon:ico }).addTo(map);
+    }
+    map.setView([lat,lng], 16);
+  }, function(){ showToast("ກະລຸນາເປີດ GPS ກ່ອນ"); }, { enableHighAccuracy:true });
+}
+
+/* ───────────────── GAS API CONFIG ───────────────── */
+// *** ປ່ຽນ URL ນີ້ຫຼັງຈາກ deploy GAS ເປັນ Web App ***
+var GAS_URL = 'https://script.google.com/macros/s/PASTE_YOUR_DEPLOYMENT_ID_HERE/exec';
+
+function _gasGet(action) {
+  return fetch(GAS_URL + '?action=' + action)
+    .then(function(r) {
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return r.json();
+    });
+}
+
+function _gasPost(body) {
+  return fetch(GAS_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain' },
+    body: JSON.stringify(body)
+  }).then(function(r) {
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    return r.json();
+  });
+}
+
+/* ───────────────── LOAD COURT DATA ───────────────── */
+function loadData() {
+  _gasGet('getCourtData')
+    .then(function(data) {
+      if (!data || data.length <= 1) {
+        document.getElementById('courtList').innerHTML = '<div class="court-card"><div class="empty-st"><i class="fas fa-database"></i><p>ບໍ່ມີຂໍ້ມູນ</p></div></div>';
+        return;
+      }
+      allCourts = data.slice(1);
+      filterAndDisplay();
+    })
+    .catch(function() {
+      document.getElementById('courtList').innerHTML = '<div class="court-card"><div class="empty-st"><i class="fas fa-wifi"></i><p>ເຊື່ອມຕໍ່ຜິດພາດ</p></div></div>';
+    });
+}
+
+/* ───────────────── FILTER & DISPLAY ───────────────── */
+function searchCourts() { filterAndDisplay(); }
+
+function filterAndDisplay() {
+  if (!map) return;
+  markersLayer.clearLayers();
+  var list = document.getElementById('courtList');
+  list.innerHTML = ''; cardElements = {};
+
+  var kw = (document.getElementById('searchInput').value || '').toLowerCase().trim();
+  var filtered = allCourts
+    .map(function(row,idx){ return {row:row,idx:idx}; })
+    .filter(function(item){
+      var matchProv = selectedProvince === "ທັງໝົດ" ||
+        (item.row[1] && item.row[1].toString().trim() === selectedProvince.trim());
+      var matchKw = (item.row[0]||'').toString().toLowerCase().includes(kw);
+      return matchProv && matchKw;
+    });
+
+  if (filtered.length === 0) {
+    list.innerHTML = '<div class="court-card"><div class="empty-st"><i class="fas fa-magnifying-glass"></i><p>ບໍ່ພົບເດີ່ນ</p></div></div>';
+    return;
+  }
+
+  filtered.forEach(function(item) {
+    var row=item.row, idx=item.idx;
+    var name    = row[0]||'ບໍ່ມີຊື່';
+    var prov    = row[1]||'-';
+    var phone1  = row[2]||'';
+    var phone2  = (row[3]||'').toString().replace(/[^0-9]/g,'');
+    var mapLink = row[4]||'#';
+    var lat     = Number(row[5]);
+    var lng     = Number(row[6]);
+
+    if (!isNaN(lat) && !isNaN(lng) && lat !== 0) {
+      var mk = L.marker([lat,lng]).bindPopup('<b>'+name+'</b>');
+      mk.on('click', function(){ showSingleCourt(idx); });
+      markersLayer.addLayer(mk);
+    }
+
+    var card = document.createElement('div');
+    card.className = 'court-card'; card.id = 'court-card-'+idx;
+    card.innerHTML =
+      '<h3>'+name+'</h3>'+
+      '<p class="loc"><i class="fas fa-location-dot" style="color:#ff3b30;font-size:10px;"></i>'+prov+'</p>'+
+      '<div class="cc-btns">'+
+        '<a href="tel:'+phone1+'" class="cc-btn cc-call" onclick="event.stopPropagation()"><i class="fas fa-phone"></i>ໂທ</a>'+
+        '<button class="cc-btn cc-chat" onclick="openWhatsApp(\''+phone2+'\');event.stopPropagation();"><i class="fa-brands fa-whatsapp"></i>Chat</button>'+
+        '<a href="'+mapLink+'" target="_blank" class="cc-btn cc-map" onclick="event.stopPropagation()"><i class="fas fa-map-location-dot"></i>Map</a>'+
+        '<button class="cc-btn cc-share" onclick="openShareModal('+idx+');event.stopPropagation();"><i class="fas fa-share-nodes"></i>ແຊຣ໌</button>'+
+      '</div>';
+    card.addEventListener('click', function(){
+      if (!isNaN(lat)&&!isNaN(lng)&&lat!==0) map.setView([lat,lng],16);
+      showSingleCourt(idx);
+    });
+    list.appendChild(card); cardElements[idx] = card;
+  });
+
+  if (markersLayer.getLayers().length > 0) map.setView([17.9634,102.6132],13);
+}
+
+function showSingleCourt(target) {
+  Object.keys(cardElements).forEach(function(i){
+    cardElements[i].style.display = parseInt(i)===target ? 'block':'none';
+  });
+}
+function resetFilterAndDisplay() {
+  Object.keys(cardElements).forEach(function(i){ cardElements[i].style.display='block'; });
+}
+
+/* ───────────────── GO TO COURT FROM FEED ───────────────── */
+function goToCourtOnMap(courtName) {
+  var found = -1;
+  for (var i=0;i<allCourts.length;i++){
+    if ((allCourts[i][0]||'').toString().trim()===courtName.trim()){ found=i; break; }
+  }
+  switchTab('map');
+  if (found !== -1) {
+    var lat=Number(allCourts[found][5]), lng=Number(allCourts[found][6]);
+    setTimeout(function(){
+      if (!isNaN(lat)&&!isNaN(lng)&&lat!==0) map.setView([lat,lng],16);
+      showSingleCourt(found);
+      var c=document.getElementById('court-card-'+found);
+      if(c) c.scrollIntoView({behavior:'smooth',inline:'center',block:'nearest'});
+    },250);
+  }
+}
+
+/* ───────────────── SHARE ───────────────── */
+function openShareModal(idx) {
+  var c=allCourts[idx]; if(!c) return;
+  var phone2=(c[3]||'').toString().replace(/[^0-9]/g,'');
+  currentShareData = { name:c[0]||'ບໍ່ມີຊື່', mapLink:c[4]||'#', phone:phone2 };
+  document.getElementById('shareModal').classList.add('active');
+}
+function closeShareModal() {
+  document.getElementById('shareModal').classList.remove('active'); currentShareData=null;
+}
+function executeShare(type) {
+  if (!currentShareData) return;
+  var n=currentShareData.name, m=currentShareData.mapLink, p=currentShareData.phone;
+  var waLink = p ? 'https://wa.me/'+p+'?text='+encodeURIComponent('Hi ສົນໃຈເດີ່ນ '+n) : '';
+  var text = '[Badminton] '+n+'\nMap: '+m+(waLink?'\nWA: '+waLink:'');
+  if (type==='wa')        window.open('https://wa.me/?text='+encodeURIComponent(text),'_blank');
+  else if (type==='fb')   window.open('https://www.facebook.com/sharer/sharer.php?u='+encodeURIComponent(m),'_blank');
+  else if (type==='copy') navigator.clipboard.writeText(text).then(function(){ showToast("ຄັດລອກສຳເລັດ"); });
+  closeShareModal();
+}
+
+function openWhatsApp(phone) {
+  if(!phone) return;
+  window.open('https://wa.me/'+phone.replace(/[^0-9]/g,''),'_blank');
+}
+
+/* ───────────────── DONATE ───────────────── */
+function openDonateModal()  { document.getElementById('donateModal').classList.add('active'); }
+function closeDonateModal() { document.getElementById('donateModal').classList.remove('active'); }
+function copyAccountNumber() {
+  navigator.clipboard.writeText('096120001693528001').then(function(){ showToast("ຄັດລອກເລກບັນຊີແລ້ວ"); });
+}
+function downloadQR() {
+  var a=document.createElement('a'); a.href=document.getElementById('qrImage').src;
+  a.download='BCEL_QR.jpg'; a.click();
+}
+
+/* ───────────────── COURT DROPDOWN ───────────────── */
+function populateCourtDropdown() {
+  var sel=document.getElementById('selectCourt'); sel.innerHTML='';
+  allCourts.forEach(function(c){
+    var o=document.createElement('option'); o.value=c[0]; o.textContent=c[0]; sel.appendChild(o);
+  });
+}
+
+/* ───────────────── SUBMIT POST ───────────────── */
+function submitPost() {
+  var nameEl  = document.getElementById('postName');
+  var phoneEl = document.getElementById('whatsappNumber');
+  var dateEl  = document.getElementById('postDate');
+  var startEl = document.getElementById('startTime');
+
+  if (!nameEl.value.trim())     { showToast("ກະລຸນາໃສ່ຊື່"); return; }
+  if (phoneEl.value.length < 8) { showToast("ກະລຸນາໃສ່ເບີ 8 ຕົວ"); return; }
+  if (!dateEl.value)            { showToast("ກະລຸນາເລືອກວັນທີ"); return; }
+  if (!startEl.value)           { showToast("ກະລຸນາໃສ່ໂມງເລີ່ມ"); return; }
+
+  var lvStr = getSelectedLevelsString();
+  if (!lvStr) { showToast("ກະລຸນາເລືອກລະດັບມື"); return; }
+
+  // Auto-prefix 85620 for Lao WA
+  var fullPhone = '85620' + phoneEl.value;
+
+  var post = {
+    name:      nameEl.value.trim(),
+    whatsapp:  fullPhone,          // stored as 85620xxxxxxxx
+    courtName: document.getElementById('selectCourt').value,
+    level:     lvStr,
+    people:    document.getElementById('peopleCount').value,
+    startTime: startEl.value,
+    endTime:   document.getElementById('endTime').value,
+    postDate:  dateEl.value
+  };
+
+  _gasPost({ action: 'savePost', post: post })
+    .then(function(res) {
+      if (res.error) { showToast("ຜິດພາດ: " + res.error); return; }
+      alert("[OK] ປະກາດສຳເລັດ!\n\n[Code] ລະຫັດລົບ: " + res.deleteCode + "\n\n[!] ຈົດໄວ້!");
+      loadFeed();
+    })
+    .catch(function(err){ showToast("ຜິດພາດ: " + err); });
+}
+
+/* ───────────────── LOAD FEED ───────────────── */
+function loadFeed() {
+  var container=document.getElementById('feedContainer');
+  if(!container) return;
+  container.innerHTML='<div class="spinner"></div>';
+
+  _gasGet('getPosts')
+    .then(function(posts) {
+      if (!posts||posts.length===0) {
+        container.innerHTML='<div class="g-card"><div class="empty-st"><i class="fas fa-users-slash"></i><p>ຍັງບໍ່ມີປະກາດ — ເປັນຄົນທຳອິດ!</p></div></div>';
+        return;
+      }
+      container.innerHTML = posts.slice().reverse().map(function(p) {
+        var phone=(p.whatsapp||'').toString().replace(/[^0-9]/g,'');
+        var timeStr=(p.startTime&&p.endTime)?p.startTime+' - '+p.endTime:(p.startTime||'--:--');
+        var courtEsc=(p.courtName||'').replace(/'/g,"\\'");
+        return (
+          '<div class="g-card feed-card">'+
+            '<button class="feed-court-btn" onclick="goToCourtOnMap(\''+courtEsc+'\')">'+
+              '<i class="fas fa-location-dot" style="color:#ff3b30;font-size:13px;"></i>'+
+              (p.courtName||'ບໍ່ລະບຸ')+
+            '</button>'+
+            '<div class="feed-meta">'+
+              '<span><i class="fas fa-user"></i>'+(p.name||'-')+'</span>'+
+              '<span><i class="fas fa-calendar-days"></i>'+(p.postedDate||'-')+'</span>'+
+              '<span><i class="fas fa-clock"></i>'+timeStr+'</span>'+
+              '<span><i class="fas fa-user-plus"></i>+'+(p.people||'?')+' ຄົນ</span>'+
+            '</div>'+
+            '<div class="feed-badges">'+levelBadges(p.level)+'</div>'+
+            '<div class="feed-actions">'+
+              '<a href="https://wa.me/'+phone+'?text='+encodeURIComponent('Hi ສົນໃຈໄປຕີຢູ່ '+(p.courtName||''))+'" target="_blank" class="wa-btn">'+
+                '<i class="fa-brands fa-whatsapp" style="font-size:16px;"></i> ທັກ WhatsApp'+
+              '</a>'+
+              '<button class="del-btn" onclick="confirmDelete('+p.rowIndex+')" title="ລົບ"><i class="fas fa-trash-can"></i></button>'+
+            '</div>'+
+          '</div>'
+        );
+      }).join('');
+    })
+    .catch(function() {
+      container.innerHTML='<div class="g-card"><div class="empty-st"><i class="fas fa-triangle-exclamation"></i><p>ໂຫຼດບໍ່ສຳເລັດ</p></div></div>';
+    });
+}
+
+/* ───────────────── DELETE ───────────────── */
+function confirmDelete(rowIndex) {
+  var code=prompt("[Code] ໃສ່ລະຫັດລົບໂພສ:");
+  if(!code||!code.trim()) return;
+  _gasPost({ action: 'verifyAndDelete', rowIndex: rowIndex, code: code.trim().toUpperCase() })
+    .then(function(res) {
+      if (res.success) { showToast("ລົບສຳເລັດ"); loadFeed(); }
+      else { showToast("[X] " + (res.message || 'ຜິດພາດ')); }
+    })
+    .catch(function(){ showToast("ເຊື່ອມຕໍ່ຜິດພາດ"); });
+}
+
+/* ───────────────── INIT ───────────────── */
+window.onload = function() {
+  buildLevelRail();
+  initMap();
+  loadData();
+  loadFeed();
+  var today=new Date().toISOString().split('T')[0];
+  var d=document.getElementById('postDate');
+  if(d){ d.value=today; d.min=today; }
+};
+</script>
+</body>
+</html>
