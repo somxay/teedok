@@ -1,91 +1,92 @@
 // ═══════════════════════════════════════════════════════
-//  Code.gs — Badminton Finder
-//  GitHub Pages version: expose JSON endpoints via doGet/doPost
-//  ໄຟລ໌ນີ້ deploy ໃນ Google Apps Script ເປັນ Web App
+//  Code.gs — Badminton Finder (JSONP version)
+//  ໃຊ້ JSONP ແທນ fetch() ເພື່ອ bypass CORS
+//  deploy: Execute as Me, Who has access: Anyone with Google Account
 // ═══════════════════════════════════════════════════════
 
-// ─── CORS helper ───────────────────────────────────────
-// ຕ້ອງ return header ນີ້ທຸກ response ເພື່ອໃຫ້ GitHub Pages fetch ໄດ້
-function _cors(output) {
-  return output
-    .setHeader('Access-Control-Allow-Origin', '*')
-    .setHeader('Access-Control-Allow-Methods', 'GET, POST')
-    .setHeader('Access-Control-Allow-Headers', 'Content-Type');
+// ─── JSONP wrapper ─────────────────────────────────────
+// ຕ້ອງ wrap ທຸກ response ດ້ວຍ callback() function call
+function _jsonp(callback, data) {
+  var json = JSON.stringify(data);
+  var output = callback
+    ? ContentService.createTextOutput(callback + '(' + json + ');')
+    : ContentService.createTextOutput(json);
+  return output.setMimeType(ContentService.MimeType.JAVASCRIPT);
 }
 
-function _json(data) {
-  return _cors(
-    ContentService
-      .createTextOutput(JSON.stringify(data))
-      .setMimeType(ContentService.MimeType.JSON)
-  );
-}
-
-// ─── doGet — ຮອງຮັບ GET requests ─────────────────────
-// URL: .../exec?action=getPosts
-// URL: .../exec?action=getCourtData
+// ─── doGet — GET requests (ຮອງຮັບ JSONP) ─────────────
+// URL: .../exec?action=getPosts&callback=_cb1_123456
+// URL: .../exec?action=getCourtData&callback=_cb2_123456
 function doGet(e) {
-  var action = (e && e.parameter && e.parameter.action) ? e.parameter.action : '';
+  var params   = (e && e.parameter) ? e.parameter : {};
+  var action   = params.action   || '';
+  var callback = params.callback || '';
 
   try {
     if (action === 'getCourtData') {
-      var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Courts');
-      if (!sheet) return _json({ error: 'Courts sheet not found' });
+      var sheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName('Courts');
+      if (!sheet) return _jsonp(callback, { error: 'Courts sheet not found' });
       var data = sheet.getDataRange().getValues();
-      return _json(data);
+      return _jsonp(callback, data);
     }
 
     if (action === 'getPosts') {
       var posts = _getPosts();
-      return _json(posts);
+      return _jsonp(callback, posts);
     }
 
-    // ຖ້າ action ບໍ່ຕົງ ຫຼື ໂທ URL ໂດຍກົງ — return status ok
-    return _json({ status: 'ok', message: 'Badminton Finder API ready' });
+    return _jsonp(callback, { status: 'ok', message: 'Badminton Finder API ready' });
 
   } catch (err) {
-    return _json({ error: err.toString() });
+    return _jsonp(callback, { error: err.toString() });
   }
 }
 
-// ─── doPost — ຮອງຮັບ POST requests ───────────────────
-// Body JSON: { action: "savePost", post: {...} }
-// Body JSON: { action: "verifyAndDelete", rowIndex: N, code: "XXX" }
+// ─── doPost — POST requests (ຈາກ hidden form) ─────────
+// ຮັບຄ່າຜ່ານ e.parameter (ບໍ່ແມ່ນ e.postData)
 function doPost(e) {
-  try {
-    var body = JSON.parse(e.postData.contents);
-    var action = body.action || '';
+  var params   = (e && e.parameter) ? e.parameter : {};
+  var action   = params.action   || '';
+  var callback = params.callback || '';
 
+  try {
     if (action === 'savePost') {
-      var code = savePost(body.post);
-      return _json({ success: true, deleteCode: code });
+      var post = JSON.parse(params.payload || '{}');
+      var code = savePost(post);
+      return _jsonp(callback, { success: true, deleteCode: code });
     }
 
     if (action === 'verifyAndDelete') {
-      var result = verifyAndDelete(body.rowIndex, body.code);
-      return _json(result);
+      var rowIndex = parseInt(params.rowIndex);
+      var code = params.code || '';
+      var result = verifyAndDelete(rowIndex, code);
+      return _jsonp(callback, result);
     }
 
-    return _json({ error: 'Unknown action: ' + action });
+    return _jsonp(callback, { error: 'Unknown action: ' + action });
 
   } catch (err) {
-    return _json({ error: err.toString() });
+    return _jsonp(callback, { error: err.toString() });
   }
 }
 
-// ─── ຟັງຊັ່ນ Business Logic (ຄືເດີມ) ────────────────
+// ─── ຕັ້ງ Spreadsheet ID ──────────────────────────────
+// *** ໃສ່ ID ຂອງ Google Sheet ທ່ານ ບ່ອນນີ້ ***
+// (ຈາກ URL: docs.google.com/spreadsheets/d/ THIS_PART /edit)
+var SPREADSHEET_ID = 'PASTE_YOUR_SPREADSHEET_ID_HERE';
+
+// ─── Business Logic ───────────────────────────────────
 
 function generateCode() {
   return Math.floor(100 + Math.random() * 900).toString();
 }
 
 function savePost(post) {
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var ss    = SpreadsheetApp.openById(SPREADSHEET_ID);
   var sheet = ss.getSheetByName('Posts');
   if (!sheet) throw new Error("ບໍ່ພົບ sheet 'Posts'");
 
   var deleteCode = generateCode();
-
   sheet.appendRow([
     post.name,      // A
     post.whatsapp,  // B
@@ -94,19 +95,18 @@ function savePost(post) {
     post.people,    // E
     post.startTime, // F
     post.endTime,   // G
-    new Date(),     // H - ວັນທີປະກາດ
-    'ເປີດ',         // I - ສະຖານະ
-    deleteCode,     // J - ລະຫັດລົບ
-    post.postDate   // K - ວັນທີທີ່ຜູ້ໃຊ້ເລືອກ
+    new Date(),     // H
+    'ເປີດ',         // I
+    deleteCode,     // J
+    post.postDate   // K
   ]);
-
   return deleteCode;
 }
 
 function _getPosts() {
-  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Posts');
+  var ss    = SpreadsheetApp.openById(SPREADSHEET_ID);
+  var sheet = ss.getSheetByName('Posts');
   if (!sheet) return [];
-
   var data = sheet.getDataRange().getValues();
   if (data.length < 2) return [];
 
@@ -114,24 +114,21 @@ function _getPosts() {
     function formatTime(val) {
       if (!val) return '--:--';
       if (val instanceof Date) {
-        var h = val.getHours().toString().padStart(2, '0');
-        var m = val.getMinutes().toString().padStart(2, '0');
-        return h + ':' + m;
+        return val.getHours().toString().padStart(2,'0') + ':' +
+               val.getMinutes().toString().padStart(2,'0');
       }
       return val.toString();
     }
-
     function formatDate(val) {
       if (!val) return '-';
       var d = (val instanceof Date) ? val : new Date(val);
       if (isNaN(d.getTime())) return '-';
       var days = ['ອາທິດ','ຈັນ','ອັງຄານ','ພຸດ','ພະຫັດ','ສຸກ','ເສົາ'];
-      var dd = d.getDate().toString().padStart(2, '0');
-      var mm = (d.getMonth() + 1).toString().padStart(2, '0');
-      var yyyy = d.getFullYear();
-      return days[d.getDay()] + ' ' + dd + '/' + mm + '/' + yyyy;
+      return days[d.getDay()] + ' ' +
+             d.getDate().toString().padStart(2,'0') + '/' +
+             (d.getMonth()+1).toString().padStart(2,'0') + '/' +
+             d.getFullYear();
     }
-
     return {
       rowIndex:   i,
       name:       String(r[0]),
@@ -146,58 +143,41 @@ function _getPosts() {
   });
 }
 
-function getPosts() {
-  return _getPosts();
-}
+function getPosts() { return _getPosts(); }
 
 function verifyAndDelete(rowIndex, code) {
-  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Posts');
-  var data = sheet.getDataRange().getValues();
-  var row = data[rowIndex + 1];
-
+  var ss    = SpreadsheetApp.openById(SPREADSHEET_ID);
+  var sheet = ss.getSheetByName('Posts');
+  var data  = sheet.getDataRange().getValues();
+  var row   = data[rowIndex + 1];
   if (!row) return { success: false, message: 'ບໍ່ພົບໂພສນີ້' };
-
   var saved = String(row[9] || '').trim().toUpperCase();
-  var input = String(code || '').trim().toUpperCase();
-
-  if (saved !== input) return { success: false, message: 'ລະຫັດຜິດ! ກະລຸນາກວດຄືນ' };
-
+  var input = String(code   || '').trim().toUpperCase();
+  if (saved !== input) return { success: false, message: 'ລະຫັດຜິດ!' };
   sheet.deleteRow(rowIndex + 2);
   return { success: true };
 }
 
 function autoDeleteExpiredPosts() {
-  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Posts');
-  var data = sheet.getDataRange().getValues();
-  var now = new Date();
-
+  var ss    = SpreadsheetApp.openById(SPREADSHEET_ID);
+  var sheet = ss.getSheetByName('Posts');
+  var data  = sheet.getDataRange().getValues();
+  var now   = new Date();
   for (var i = data.length - 1; i >= 1; i--) {
     var row = data[i];
-    var playDateVal = row[10];
+    var playDateVal  = row[10];
     var startTimeVal = row[5];
-
     if (!playDateVal || !startTimeVal) continue;
-
-    var startHour, startMin;
+    var h, m;
     if (startTimeVal instanceof Date) {
-      startHour = startTimeVal.getHours();
-      startMin  = startTimeVal.getMinutes();
+      h = startTimeVal.getHours(); m = startTimeVal.getMinutes();
     } else {
       var parts = startTimeVal.toString().split(':');
-      startHour = parseInt(parts[0]) || 0;
-      startMin  = parseInt(parts[1]) || 0;
+      h = parseInt(parts[0]) || 0; m = parseInt(parts[1]) || 0;
     }
-
-    var playDate = new Date(playDateVal);
-    var startDateTime = new Date(
-      playDate.getFullYear(), playDate.getMonth(), playDate.getDate(),
-      startHour, startMin, 0
-    );
-
-    if (now >= startDateTime) {
-      sheet.deleteRow(i + 1);
-      Logger.log('Deleted row ' + (i+1) + ' — expired at ' + startDateTime);
-    }
+    var d = new Date(playDateVal);
+    var start = new Date(d.getFullYear(), d.getMonth(), d.getDate(), h, m, 0);
+    if (now >= start) sheet.deleteRow(i + 1);
   }
 }
 
@@ -206,11 +186,10 @@ function createTrigger() {
     if (t.getHandlerFunction() === 'autoDeleteExpiredPosts') ScriptApp.deleteTrigger(t);
   });
   ScriptApp.newTrigger('autoDeleteExpiredPosts').timeBased().everyMinutes(5).create();
-  Logger.log('Trigger set — checks every 5 min');
 }
 
 function getCourtData() {
-  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Courts');
-  var data = sheet.getDataRange().getValues();
-  return JSON.stringify(data);
+  var ss    = SpreadsheetApp.openById(SPREADSHEET_ID);
+  var sheet = ss.getSheetByName('Courts');
+  return JSON.stringify(sheet.getDataRange().getValues());
 }

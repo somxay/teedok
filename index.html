@@ -870,26 +870,97 @@ function getLocation() {
 
 /* ───────────────── GAS API CONFIG ───────────────── */
 // *** ປ່ຽນ URL ນີ້ຫຼັງຈາກ deploy GAS ເປັນ Web App ***
-var GAS_URL = 'https://script.google.com/macros/s/AKfycbxJnH63l5oAEnaVo4jnn0KskGyzfCmYfzQDwYzYC9qdYym39rrzYBcI4-wUeVCdZhca/exec';
+var GAS_URL = 'https://script.google.com/macros/s/PASTE_YOUR_DEPLOYMENT_ID_HERE/exec';
 
+/* ───────────────── JSONP helper (GET) ───────────────── */
+// JSONP bypass CORS ໄດ້ ເພາະໃຊ້ <script> tag ແທນ fetch()
+// GAS doGet ຕ້ອງ return: callback(jsonData)
+var _cbCounter = 0;
 function _gasGet(action) {
-  return fetch(GAS_URL + '?action=' + action)
-    .then(function(r) {
-      if (!r.ok) throw new Error('HTTP ' + r.status);
-      return r.json();
-    });
-}
+  return new Promise(function(resolve, reject) {
+    var cbName = '_cb' + (++_cbCounter) + '_' + Date.now();
+    var timeout = setTimeout(function() {
+      delete window[cbName];
+      if (script.parentNode) script.parentNode.removeChild(script);
+      reject(new Error('timeout'));
+    }, 15000);
 
-function _gasPost(body) {
-  return fetch(GAS_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'text/plain' },
-    body: JSON.stringify(body)
-  }).then(function(r) {
-    if (!r.ok) throw new Error('HTTP ' + r.status);
-    return r.json();
+    window[cbName] = function(data) {
+      clearTimeout(timeout);
+      delete window[cbName];
+      if (script.parentNode) script.parentNode.removeChild(script);
+      if (data && data.error) reject(new Error(data.error));
+      else resolve(data);
+    };
+
+    var script = document.createElement('script');
+    script.src = GAS_URL + '?action=' + action + '&callback=' + cbName + '&t=' + Date.now();
+    script.onerror = function() {
+      clearTimeout(timeout);
+      delete window[cbName];
+      reject(new Error('script load failed'));
+    };
+    document.head.appendChild(script);
   });
 }
+
+/* ───────────────── Hidden form POST helper ───────────────── */
+// POST ຜ່ານ hidden form → GAS ຮັບ e.parameter (ບໍ່ແມ່ນ e.postData)
+// ໃຊ້ JSONP callback ຮັບ response ກັບ
+function _gasPost(body) {
+  return new Promise(function(resolve, reject) {
+    var cbName = '_cb' + (++_cbCounter) + '_' + Date.now();
+    var timeout = setTimeout(function() {
+      cleanup();
+      reject(new Error('timeout'));
+    }, 20000);
+
+    function cleanup() {
+      clearTimeout(timeout);
+      delete window[cbName];
+      var el = document.getElementById('_gas_iframe');
+      if (el) el.parentNode.removeChild(el);
+      var f = document.getElementById('_gas_form');
+      if (f) f.parentNode.removeChild(f);
+    }
+
+    window[cbName] = function(data) {
+      cleanup();
+      if (data && data.error) reject(new Error(data.error));
+      else resolve(data);
+    };
+
+    // Encode body as JSON string ໃນ field "payload"
+    var iframeName = 'gas_iframe_' + _cbCounter;
+    var iframe = document.createElement('iframe');
+    iframe.id = '_gas_iframe';
+    iframe.name = iframeName;
+    iframe.style.display = 'none';
+    document.body.appendChild(iframe);
+
+    var form = document.createElement('form');
+    form.id = '_gas_form';
+    form.method = 'POST';
+    form.action = GAS_URL + '?callback=' + cbName;
+    form.target = iframeName;
+    form.style.display = 'none';
+
+    function addField(name, value) {
+      var inp = document.createElement('input');
+      inp.type = 'hidden'; inp.name = name; inp.value = value;
+      form.appendChild(inp);
+    }
+    // ສົ່ງ each field ແຍກ — GAS ຮັບໄດ້ຜ່ານ e.parameter
+    addField('action', body.action || '');
+    if (body.post)      addField('payload', JSON.stringify(body.post));
+    if (body.rowIndex !== undefined) addField('rowIndex', body.rowIndex);
+    if (body.code)      addField('code', body.code);
+
+    document.body.appendChild(form);
+    form.submit();
+  });
+}
+
 
 /* ───────────────── LOAD COURT DATA ───────────────── */
 function loadData() {
