@@ -73,7 +73,7 @@ function doPost(e) {
 // ─── ຕັ້ງ Spreadsheet ID ──────────────────────────────
 // *** ໃສ່ ID ຂອງ Google Sheet ທ່ານ ບ່ອນນີ້ ***
 // (ຈາກ URL: docs.google.com/spreadsheets/d/ THIS_PART /edit)
-var SPREADSHEET_ID = 'PASTE_YOUR_SPREADSHEET_ID_HERE';
+var SPREADSHEET_ID = '1S9565xEVJnzjiS49zQiBfqhyy5VFTRINNjB1rBekNFg';
 
 // ─── Business Logic ───────────────────────────────────
 
