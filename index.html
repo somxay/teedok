@@ -1222,8 +1222,8 @@ function closeShareModal() {
 function executeShare(type) {
   if (!currentShareData) return;
   var n=currentShareData.name, m=currentShareData.mapLink, p=currentShareData.phone;
-  var waLink = p ? 'https://wa.me/'+p+'?text='+encodeURIComponent('Hi ສົນໃຈເດີ່ນ '+n) : '';
-  var text = '[Badminton] '+n+'\nMap: '+m+(waLink?'\nWA: '+waLink:'');
+  // ໃຊ້ເລກເບີໂທ ບໍ່ໃຊ້ wa.me link — ສັ້ນກວ່າ ສະອາດກວ່າ
+  var text = '[Badminton] '+n+'\nMap: '+m+(p?'\nWA: +'+p:'');
   if (type==='wa')        window.open('https://wa.me/?text='+encodeURIComponent(text),'_blank');
   else if (type==='fb')   window.open('https://www.facebook.com/sharer/sharer.php?u='+encodeURIComponent(m),'_blank');
   else if (type==='copy') navigator.clipboard.writeText(text).then(function(){ showToast("ຄັດລອກສຳເລັດ"); });
