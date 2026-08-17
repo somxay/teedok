@@ -464,13 +464,12 @@
     .lv-chip.lv-endpoint .lc-desc { color: #fff; }
     .lv-hint { font-size: 10px; color: var(--label3); margin-top: 3px; }
 
-    /* ─── FEED GRID (1-col mobile, 2-col tablet+) ─── */
+    /* ─── FEED GRID (2-col mobile, 3-col desktop) ─── */
     .feed-grid {
-      display: flex;
-      flex-direction: column;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
       gap: 10px;
     }
-    @media(min-width:600px){ .feed-grid { display: grid; grid-template-columns: repeat(2,1fr); } }
     @media(min-width:900px){ .feed-grid { grid-template-columns: repeat(3,1fr); } }
 
     /* ─── FEED HEADER ─── */
@@ -998,26 +997,10 @@ function initMap() {
       center: { lat: 17.9634, lng: 102.6132 },
       zoom: 13,
       mapTypeId: google.maps.MapTypeId.HYBRID,
-      mapId: "DEMO_MAP_ID",
+      // mapId removed — conflicts with styles; AdvancedMarkerElement loaded via libraries=marker
       disableDefaultUI: true,
-      gestureHandling: 'greedy',
-      // HYBRID shows satellite imagery — POI icons are minimal by default
-      // Additional style rules kept for any ROADMAP fallback
-      styles: [
-        { featureType:'poi',                               stylers:[{visibility:'off'}] },
-        { featureType:'poi.attraction',                    stylers:[{visibility:'off'}] },
-        { featureType:'poi.business',                      stylers:[{visibility:'off'}] },
-        { featureType:'poi.government',                    stylers:[{visibility:'off'}] },
-        { featureType:'poi.medical',                       stylers:[{visibility:'off'}] },
-        { featureType:'poi.park',                          stylers:[{visibility:'off'}] },
-        { featureType:'poi.place_of_worship',              stylers:[{visibility:'off'}] },
-        { featureType:'poi.school',                        stylers:[{visibility:'off'}] },
-        { featureType:'poi.sports_complex',                stylers:[{visibility:'off'}] },
-        { featureType:'transit',                           stylers:[{visibility:'off'}] },
-        { featureType:'transit.line',                      stylers:[{visibility:'off'}] },
-        { featureType:'transit.station',                   stylers:[{visibility:'off'}] },
-        { featureType:'road', elementType:'labels.icon',   stylers:[{visibility:'off'}] }
-      ]
+      gestureHandling: 'greedy'
+      // HYBRID: satellite imagery, POI minimal by default — no styles needed
     });
     infoWindow = new google.maps.InfoWindow();
     map.addListener('click', resetFilterAndDisplay);
@@ -1060,32 +1043,40 @@ var GAS_URL = 'https://script.google.com/macros/s/AKfycbxJnH63l5oAEnaVo4jnn0KskG
 // JSONP bypass CORS ໄດ້ ເພາະໃຊ້ <script> tag ແທນ fetch()
 // GAS doGet ຕ້ອງ return: callback(jsonData)
 var _cbCounter = 0;
-function _gasGet(action) {
+function _gasCall(params) {
+  // Single JSONP helper used for ALL calls (GET and POST-via-GET)
   return new Promise(function(resolve, reject) {
     var cbName = '_cb' + (++_cbCounter) + '_' + Date.now();
+    var script;
+
     var timeout = setTimeout(function() {
-      delete window[cbName];
-      if (script.parentNode) script.parentNode.removeChild(script);
-      reject(new Error('timeout'));
-    }, 15000);
+      if (window[cbName]) delete window[cbName];
+      if (script && script.parentNode) script.parentNode.removeChild(script);
+      reject(new Error('ຄຳຮ້ອງ timeout — ກວດ GAS URL ຫຼື internet'));
+    }, 25000);
 
     window[cbName] = function(data) {
       clearTimeout(timeout);
       delete window[cbName];
-      if (script.parentNode) script.parentNode.removeChild(script);
+      if (script && script.parentNode) script.parentNode.removeChild(script);
+      // GAS may return {error: ...} or valid data
       if (data && data.error) reject(new Error(data.error));
       else resolve(data);
     };
 
-    var script = document.createElement('script');
-    script.src = GAS_URL + '?action=' + action + '&callback=' + cbName + '&t=' + Date.now();
+    script = document.createElement('script');
+    script.src = GAS_URL + '?' + params + '&callback=' + cbName + '&t=' + Date.now();
     script.onerror = function() {
       clearTimeout(timeout);
-      delete window[cbName];
-      reject(new Error('script load failed'));
+      if (window[cbName]) delete window[cbName];
+      reject(new Error('ໂຫຼດ script ຜິດພາດ — ກວດ GAS URL ຫຼື network'));
     };
     document.head.appendChild(script);
   });
+}
+
+function _gasGet(action) {
+  return _gasCall('action=' + encodeURIComponent(action));
 }
 
 /* ───────────────── JSONP POST helper ───────────────── */
@@ -1093,37 +1084,11 @@ function _gasGet(action) {
 // GAS doGet ຕ້ອງ handle action=savePost, action=verifyAndDelete ດ້ວຍ
 // ວິທີນີ້ reliable ກວ່າ iframe form ເພາະ GAS ຕອບ callback ໂດຍກົງ
 function _gasPost(body) {
-  // Build query string from body fields
   var params = 'action=' + encodeURIComponent(body.action || '');
   if (body.post)                   params += '&payload=' + encodeURIComponent(JSON.stringify(body.post));
   if (body.rowIndex !== undefined) params += '&rowIndex=' + body.rowIndex;
   if (body.code)                   params += '&code=' + encodeURIComponent(body.code);
-
-  return new Promise(function(resolve, reject) {
-    var cbName = '_cb' + (++_cbCounter) + '_' + Date.now();
-    var timeout = setTimeout(function() {
-      delete window[cbName];
-      if (script && script.parentNode) script.parentNode.removeChild(script);
-      reject(new Error('timeout — ກວດສອບ GAS URL ຫຼື internet'));
-    }, 25000);
-
-    window[cbName] = function(data) {
-      clearTimeout(timeout);
-      delete window[cbName];
-      if (script && script.parentNode) script.parentNode.removeChild(script);
-      if (data && data.error) reject(new Error(data.error));
-      else resolve(data);
-    };
-
-    var script = document.createElement('script');
-    script.src = GAS_URL + '?' + params + '&callback=' + cbName + '&t=' + Date.now();
-    script.onerror = function() {
-      clearTimeout(timeout);
-      delete window[cbName];
-      reject(new Error('ໂຫຼດ script ຜິດພາດ — ກວດ GAS URL'));
-    };
-    document.head.appendChild(script);
-  });
+  return _gasCall(params);
 }
 
 
@@ -1255,7 +1220,7 @@ function filterAndDisplay() {
       pinEl.style.cssText = 'cursor:pointer;';
       var mk = new window._AME({ position: pos, map: map, content: pinEl, title: name });
       (function(mk, idx, name, prov){
-        mk.addListener('click', function(){
+        mk.addListener('gmp-click', function(){
           infoWindow.setContent(
             '<div style="font-family:system-ui,sans-serif;padding:4px 2px;">' +
             '<b style="font-size:13px;">'+name+'</b>' +
