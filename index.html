@@ -6,7 +6,6 @@
   <title>Badminton Finder</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏸</text></svg>">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/2.2.19/tailwind.min.css"/>
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css"/>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -465,6 +464,14 @@
     .lv-chip.lv-endpoint .lc-desc { color: #fff; }
     .lv-hint { font-size: 10px; color: var(--label3); margin-top: 3px; }
 
+    /* ─── FEED GRID (2-col mobile) ─── */
+    .feed-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+    @media(min-width:600px){ .feed-grid { grid-template-columns: repeat(3,1fr); } }
+
     /* ─── FEED HEADER ─── */
     .feed-hdr {
       display: flex; align-items: center; justify-content: space-between;
@@ -480,7 +487,7 @@
     }
 
     /* ─── FEED CARD ─── */
-    .feed-card { width: 100%; max-width: 100%; margin-bottom: 12px; }
+    .feed-card { width: 100%; max-width: 100%; margin-bottom: 0; display: flex; flex-direction: column; }
     .feed-court-btn {
       display: flex; align-items: center; gap: 6px;
       font-size: 15px; font-weight: 700; color: var(--label);
@@ -495,7 +502,7 @@
     .feed-meta span { display: flex; align-items: center; gap: 4px; }
     .feed-meta i { font-size: 10px; }
     .feed-badges { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 11px; }
-    .feed-actions { display: flex; gap: 8px; }
+    .feed-actions { display: flex; gap: 8px; margin-top: auto; }
 
     /* WhatsApp button — glass tinted green */
     .wa-btn {
@@ -661,7 +668,6 @@
     }
     #toast.show { transform: translateX(-50%) translateY(0); }
 
-    .leaflet-popup-content-wrapper { border-radius: 16px !important; }
   </style>
 </head>
 
@@ -780,7 +786,7 @@
     <p><i class="fas fa-list-ul" style="margin-right:5px;"></i>ປະກາດຫຼ້າສຸດ</p>
     <button onclick="loadFeed()"><i class="fas fa-rotate-right"></i> ໂຫຼດໃໝ່</button>
   </div>
-  <div id="feedContainer"><div class="spinner"></div></div>
+  <div id="feedContainer" class="feed-grid"><div class="spinner" style="grid-column:1/-1;"></div></div>
 </div>
 
 <!-- ══════════════ SIDEBAR ══════════════ -->
@@ -845,12 +851,13 @@
 <div id="toast"></div>
 
 <!-- ══════════════ SCRIPTS ══════════════ -->
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 'use strict';
 
 /* ───────────────── STATE ───────────────── */
-var map, markersLayer, userMarker;
+var map, userMarker;
+var markers = [];          // Google Maps Marker array
+var infoWindow = null;     // shared InfoWindow
 var allCourts = [];
 var currentShareData = null;
 var selectedProvince = "ທັງໝົດ";
@@ -983,15 +990,32 @@ function applySidebarFilter() {
   filterAndDisplay(); toggleSidebar();
 }
 
-/* ───────────────── MAP INIT (no zoom control) ───────────────── */
+/* ───────────────── MAP INIT (Google Maps) ───────────────── */
 function initMap() {
   try {
-    map = L.map('map', { zoomControl: false }).setView([17.9634, 102.6132], 13);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '&copy; OpenStreetMap'
-    }).addTo(map);
-    markersLayer = L.layerGroup().addTo(map);
-    map.on('click', resetFilterAndDisplay);
+    map = new google.maps.Map(document.getElementById('map'), {
+      center: { lat: 17.9634, lng: 102.6132 },
+      zoom: 13,
+      // Remove default controls — clean iOS look
+      disableDefaultUI: true,
+      gestureHandling: 'greedy',
+      // Minimal style — muted colours matching glass UI
+      styles: [
+        { featureType:'poi',       stylers:[{visibility:'off'}] },
+        { featureType:'transit',   stylers:[{visibility:'off'}] },
+        { featureType:'road',      elementType:'labels.icon', stylers:[{visibility:'off'}] },
+        { featureType:'administrative', elementType:'labels.text.fill',
+          stylers:[{color:'#6b7280'}] },
+        { featureType:'landscape', stylers:[{color:'#f1f5fb'}] },
+        { featureType:'water',     stylers:[{color:'#c7dff0'}] },
+        { featureType:'road',      elementType:'geometry', stylers:[{color:'#ffffff'}] },
+        { featureType:'road',      elementType:'labels.text.fill', stylers:[{color:'#9ca3af'}] },
+        { featureType:'road.arterial', elementType:'geometry', stylers:[{color:'#f3f4f6'}] },
+        { featureType:'road.highway',  elementType:'geometry', stylers:[{color:'#e5e7eb'}] }
+      ]
+    });
+    infoWindow = new google.maps.InfoWindow();
+    map.addListener('click', resetFilterAndDisplay);
   } catch(e) { console.error('Map init error:', e); }
 }
 
@@ -999,15 +1023,24 @@ function initMap() {
 function getLocation() {
   if (!navigator.geolocation) { showToast("ບຣາວເຊີບໍ່ຮອງຮັບ GPS"); return; }
   navigator.geolocation.getCurrentPosition(function(p) {
-    var lat = p.coords.latitude, lng = p.coords.longitude;
-    if (userMarker) { userMarker.setLatLng([lat,lng]); }
-    else {
-      var ico = L.divIcon({ className:'', iconSize:[16,16], iconAnchor:[8,8],
-        html:'<div style="width:16px;height:16px;border-radius:50%;background:#1d6aff;border:3px solid #fff;box-shadow:0 0 8px rgba(0,0,0,0.30);"></div>'
+    var pos = { lat: p.coords.latitude, lng: p.coords.longitude };
+    if (userMarker) {
+      userMarker.setPosition(pos);
+    } else {
+      userMarker = new google.maps.Marker({
+        position: pos, map: map,
+        icon: {
+          path: google.maps.SymbolPath.CIRCLE,
+          scale: 10,
+          fillColor: '#1d6aff', fillOpacity: 1,
+          strokeColor: '#ffffff', strokeWeight: 3
+        },
+        title: "ຕຳແໜ່ງຂອງທ່ານ",
+        zIndex: 999
       });
-      userMarker = L.marker([lat,lng], { icon:ico }).addTo(map);
     }
-    map.setView([lat,lng], 16);
+    map.panTo(pos);
+    map.setZoom(16);
   }, function(){ showToast("ກະລຸນາເປີດ GPS ກ່ອນ"); }, { enableHighAccuracy:true });
 }
 
@@ -1121,12 +1154,18 @@ function loadData() {
     });
 }
 
-/* ───────────────── FILTER & DISPLAY ───────────────── */
+/* ───────────────── FILTER & DISPLAY (Google Maps) ───────────────── */
 function searchCourts() { filterAndDisplay(); }
+
+function clearMarkers() {
+  markers.forEach(function(mk){ mk.setMap(null); });
+  markers = [];
+}
 
 function filterAndDisplay() {
   if (!map) return;
-  markersLayer.clearLayers();
+  clearMarkers();
+  if (infoWindow) infoWindow.close();
   var list = document.getElementById('courtList');
   list.innerHTML = ''; cardElements = {};
 
@@ -1145,6 +1184,7 @@ function filterAndDisplay() {
     return;
   }
 
+  var bounds = new google.maps.LatLngBounds();
   filtered.forEach(function(item) {
     var row=item.row, idx=item.idx;
     var name    = row[0]||'ບໍ່ມີຊື່';
@@ -1154,11 +1194,35 @@ function filterAndDisplay() {
     var mapLink = row[4]||'#';
     var lat     = Number(row[5]);
     var lng     = Number(row[6]);
+    var hasCoord = !isNaN(lat) && !isNaN(lng) && lat !== 0;
 
-    if (!isNaN(lat) && !isNaN(lng) && lat !== 0) {
-      var mk = L.marker([lat,lng]).bindPopup('<b>'+name+'</b>');
-      mk.on('click', function(){ showSingleCourt(idx); });
-      markersLayer.addLayer(mk);
+    if (hasCoord) {
+      var pos = {lat:lat, lng:lng};
+      bounds.extend(pos);
+      var mk = new google.maps.Marker({
+        position: pos, map: map,
+        title: name,
+        icon: {
+          path: 'M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z',
+          fillColor: '#1d6aff', fillOpacity: 1,
+          strokeColor: '#ffffff', strokeWeight: 1.5,
+          scale: 1.6,
+          anchor: new google.maps.Point(12, 22)
+        }
+      });
+      (function(mk, idx, name, prov, pos){
+        mk.addListener('click', function(){
+          infoWindow.setContent(
+            '<div style="font-family:system-ui,sans-serif;padding:4px 2px;">' +
+            '<b style="font-size:13px;">'+name+'</b>' +
+            '<p style="font-size:11px;color:#6b7280;margin:2px 0 0;">'+prov+'</p>' +
+            '</div>'
+          );
+          infoWindow.open(map, mk);
+          showSingleCourt(idx);
+        });
+      })(mk, idx, name, prov, pos);
+      markers.push(mk);
     }
 
     var card = document.createElement('div');
@@ -1173,13 +1237,14 @@ function filterAndDisplay() {
         '<button class="cc-btn cc-share" onclick="openShareModal('+idx+');event.stopPropagation();"><i class="fas fa-share-nodes"></i>ແຊຣ໌</button>'+
       '</div>';
     card.addEventListener('click', function(){
-      if (!isNaN(lat)&&!isNaN(lng)&&lat!==0) map.setView([lat,lng],16);
+      if (hasCoord) { map.panTo({lat:lat,lng:lng}); map.setZoom(16); }
       showSingleCourt(idx);
     });
     list.appendChild(card); cardElements[idx] = card;
   });
 
-  if (markersLayer.getLayers().length > 0) map.setView([17.9634,102.6132],13);
+  if (markers.length > 1) { map.fitBounds(bounds); }
+  else if (markers.length === 1) { map.setCenter(markers[0].getPosition()); map.setZoom(15); }
 }
 
 function showSingleCourt(target) {
@@ -1188,10 +1253,11 @@ function showSingleCourt(target) {
   });
 }
 function resetFilterAndDisplay() {
+  if (infoWindow) infoWindow.close();
   Object.keys(cardElements).forEach(function(i){ cardElements[i].style.display='block'; });
 }
 
-/* ───────────────── GO TO COURT FROM FEED ───────────────── */
+/* ───────────────── GO TO COURT FROM FEED (Google Maps) ───────────────── */
 function goToCourtOnMap(courtName) {
   var found = -1;
   for (var i=0;i<allCourts.length;i++){
@@ -1201,11 +1267,28 @@ function goToCourtOnMap(courtName) {
   if (found !== -1) {
     var lat=Number(allCourts[found][5]), lng=Number(allCourts[found][6]);
     setTimeout(function(){
-      if (!isNaN(lat)&&!isNaN(lng)&&lat!==0) map.setView([lat,lng],16);
+      if (!isNaN(lat)&&!isNaN(lng)&&lat!==0){
+        map.panTo({lat:lat,lng:lng});
+        map.setZoom(16);
+      }
       showSingleCourt(found);
+      // Open infoWindow on the matching marker
+      var mk = markers.find(function(m){
+        var p = m.getPosition();
+        return Math.abs(p.lat()-lat)<0.0001 && Math.abs(p.lng()-lng)<0.0001;
+      });
+      if (mk && infoWindow) {
+        infoWindow.setContent(
+          '<div style="font-family:system-ui,sans-serif;padding:4px 2px;">'+
+          '<b style="font-size:13px;">'+(allCourts[found][0]||'')+'</b>'+
+          '<p style="font-size:11px;color:#6b7280;margin:2px 0 0;">'+(allCourts[found][1]||'')+'</p>'+
+          '</div>'
+        );
+        infoWindow.open(map, mk);
+      }
       var c=document.getElementById('court-card-'+found);
       if(c) c.scrollIntoView({behavior:'smooth',inline:'center',block:'nearest'});
-    },250);
+    },300);
   }
 }
 
@@ -1351,7 +1434,7 @@ function confirmDelete(rowIndex) {
 /* ───────────────── INIT ───────────────── */
 window.onload = function() {
   buildLevelRail();
-  initMap();
+  // initMap() is called by Google Maps API via &callback=initMap
   loadData();
   loadFeed();
   var today=new Date().toISOString().split('T')[0];
@@ -1359,5 +1442,7 @@ window.onload = function() {
   if(d){ d.value=today; d.min=today; }
 };
 </script>
+  <!-- Google Maps API — callback=initMap so map starts after API loads -->
+  <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyCvItAs5UNfCTEyhsaWXE4WI7XxibaQpDE&callback=initMap" async defer></script>
 </body>
 </html>
