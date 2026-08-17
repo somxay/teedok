@@ -997,19 +997,15 @@ function initMap() {
       center: { lat: 17.9634, lng: 102.6132 },
       zoom: 13,
       mapTypeId: google.maps.MapTypeId.HYBRID,
-      // mapId removed — conflicts with styles; AdvancedMarkerElement loaded via libraries=marker
+      // mapId not needed — using classic google.maps.Marker with custom SVG icon
       disableDefaultUI: true,
       gestureHandling: 'greedy'
       // HYBRID: satellite imagery, POI minimal by default — no styles needed
     });
     infoWindow = new google.maps.InfoWindow();
     map.addListener('click', resetFilterAndDisplay);
-    // Pre-load AdvancedMarkerElement library so async calls work later
-    google.maps.importLibrary("marker").then(function(lib) {
-      window._AME = lib.AdvancedMarkerElement;
-      // Now load court data (needs _AME ready)
-      loadData();
-    });
+    // Classic Marker — no library needed, load data immediately
+    loadData();
   } catch(e) { console.error('Map init error:', e); }
 }
 
@@ -1021,11 +1017,14 @@ function getLocation() {
     if (userMarker) {
       userMarker.setPosition(pos);
     } else {
-      var userDot = document.createElement('div');
-      userDot.style.cssText = 'width:20px;height:20px;border-radius:50%;background:#1d6aff;border:3px solid #fff;box-shadow:0 0 0 4px rgba(29,106,255,0.25),0 2px 8px rgba(0,0,0,0.30);';
-      userMarker = new window._AME({
+      userMarker = new google.maps.Marker({
         position: pos, map: map,
-        content: userDot,
+        icon: {
+          path: google.maps.SymbolPath.CIRCLE,
+          scale: 9,
+          fillColor: '#1d6aff', fillOpacity: 1,
+          strokeColor: '#ffffff', strokeWeight: 3
+        },
         title: "ຕຳແໜ່ງຂອງທ່ານ",
         zIndex: 999
       });
@@ -1112,7 +1111,7 @@ function loadData() {
 function searchCourts() { filterAndDisplay(); }
 
 function clearMarkers() {
-  markers.forEach(function(mk){ mk.map = null; });
+  markers.forEach(function(mk){ mk.setMap(null); });
   markers = [];
 }
 
@@ -1215,12 +1214,16 @@ function filterAndDisplay() {
         '<circle cx="22" cy="52" r="2.5" fill="rgba(255,255,255,0.70)"/>' +
         '</svg>';
 
-      var pinEl = document.createElement('div');
-      pinEl.innerHTML = racketSVG;
-      pinEl.style.cssText = 'cursor:pointer;';
-      var mk = new window._AME({ position: pos, map: map, content: pinEl, title: name });
+      var mk = new google.maps.Marker({
+        position: pos, map: map, title: name,
+        icon: {
+          url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(racketSVG),
+          scaledSize: new google.maps.Size(44, 54),
+          anchor: new google.maps.Point(22, 52)
+        }
+      });
       (function(mk, idx, name, prov){
-        mk.addListener('gmp-click', function(){
+        mk.addListener('click', function(){
           infoWindow.setContent(
             '<div style="font-family:system-ui,sans-serif;padding:4px 2px;">' +
             '<b style="font-size:13px;">'+name+'</b>' +
@@ -1283,11 +1286,9 @@ function goToCourtOnMap(courtName) {
       showSingleCourt(found);
       // Open infoWindow on the matching marker
       var mk = markers.find(function(m){
-        var p = m.position;
+        var p = m.getPosition();
         if (!p) return false;
-        var mlat = typeof p.lat === 'function' ? p.lat() : p.lat;
-        var mlng = typeof p.lng === 'function' ? p.lng() : p.lng;
-        return Math.abs(mlat-lat)<0.0001 && Math.abs(mlng-lng)<0.0001;
+        return Math.abs(p.lat()-lat)<0.0001 && Math.abs(p.lng()-lng)<0.0001;
       });
       if (mk && infoWindow) {
         infoWindow.setContent(
@@ -1386,9 +1387,17 @@ function submitPost() {
     .then(function(res) {
       if (res.error) { showToast("ຜິດພາດ: " + res.error); return; }
 
-      // Show delete code in a nice toast + inline banner (no blocking alert)
-      var code = res.deleteCode || '???';
-      showDeleteCodeBanner(code);
+      // Extract deleteCode — handle both response shapes from GAS
+      // doGet returns: { success: true, deleteCode: "123" }
+      // fallback: res itself may be the code string
+      var code = res.deleteCode || res.code || (typeof res === 'string' ? res : null);
+      if (!code) {
+        // If GAS returned success but no code, show success without code
+        console.warn('GAS response:', JSON.stringify(res));
+        showToast("ປະກາດສຳເລັດ! (ກວດ console ເພື່ອ debug ລະຫັດ)");
+      } else {
+        showDeleteCodeBanner(code);
+      }
 
       // Clear form fields
       document.getElementById('postName').value = '';
@@ -1504,8 +1513,7 @@ function confirmDelete(rowIndex) {
 /* ───────────────── INIT ───────────────── */
 window.onload = function() {
   buildLevelRail();
-  // initMap() called by Google Maps callback — it triggers loadData() after AME loads
-  // loadData() is now called inside initMap() once AdvancedMarkerElement is ready
+  // initMap() called by Google Maps &callback= — it calls loadData() internally
   loadFeed();
   var today=new Date().toISOString().split('T')[0];
   var d=document.getElementById('postDate');
@@ -1513,6 +1521,6 @@ window.onload = function() {
 };
 </script>
   <!-- Google Maps API — callback=initMap so map starts after API loads -->
-  <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyCFtpvFH9eTWyoVikPvGB9I2959xOo1F1E&loading=async&callback=initMap&libraries=marker" async defer></script>
+  <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyCvItAs5UNfCTEyhsaWXE4WI7XxibaQpDE&loading=async&callback=initMap" async defer></script>
 </body>
 </html>
