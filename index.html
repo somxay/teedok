@@ -1152,74 +1152,102 @@ function filterAndDisplay() {
     if (hasCoord) {
       var pos = {lat:lat, lng:lng};
       bounds.extend(pos);
-      // Badminton racket pin — neon lime that pops on dark satellite imagery
-      // Glass-depth pin body + crisp racket detail
+      // iOS Liquid Glass badminton marker
+      // Frosted glass pill + blue accent + crisp white racket
       var racketSVG =
-        '<svg xmlns="http://www.w3.org/2000/svg" width="44" height="54" viewBox="0 0 44 54">' +
+        '<svg xmlns="http://www.w3.org/2000/svg" width="48" height="60" viewBox="0 0 48 60">' +
         '<defs>' +
-          // Pin gradient — neon lime core → deeper green base
-          '<linearGradient id="pinG" x1="0.3" y1="0" x2="0.7" y2="1">' +
-            '<stop offset="0%"   stop-color="#c8ff00"/>' +   // neon lime top
-            '<stop offset="55%"  stop-color="#7ecf00"/>' +   // mid green
-            '<stop offset="100%" stop-color="#3d8000"/>' +   // dark base
+
+          // ── Glass pin body gradient (white→ice blue) ────────
+          '<linearGradient id="pg" x1="0.25" y1="0" x2="0.75" y2="1">' +
+            '<stop offset="0%"   stop-color="rgba(255,255,255,0.92)"/>' +
+            '<stop offset="40%"  stop-color="rgba(220,235,255,0.80)"/>' +
+            '<stop offset="100%" stop-color="rgba(180,210,255,0.70)"/>' +
           '</linearGradient>' +
-          // Gloss overlay
-          '<radialGradient id="gloss" cx="38%" cy="28%" r="55%">' +
-            '<stop offset="0%"   stop-color="rgba(255,255,255,0.55)"/>' +
+
+          // ── Specular top gloss ───────────────────────────────
+          '<radialGradient id="gl" cx="35%" cy="22%" r="50%">' +
+            '<stop offset="0%"   stop-color="rgba(255,255,255,0.90)"/>' +
+            '<stop offset="70%"  stop-color="rgba(255,255,255,0.20)"/>' +
             '<stop offset="100%" stop-color="rgba(255,255,255,0)"/>' +
           '</radialGradient>' +
-          // Drop shadow filter
-          '<filter id="ds" x="-30%" y="-20%" width="160%" height="160%">' +
-            '<feDropShadow dx="0" dy="3" stdDeviation="3" flood-color="rgba(0,0,0,0.45)"/>' +
+
+          // ── Blue accent fill for racket head ────────────────
+          '<radialGradient id="hd" cx="50%" cy="45%" r="55%">' +
+            '<stop offset="0%"   stop-color="rgba(29,106,255,0.28)"/>' +
+            '<stop offset="100%" stop-color="rgba(29,106,255,0.10)"/>' +
+          '</radialGradient>' +
+
+          // ── Outer glow / shadow ──────────────────────────────
+          '<filter id="glow" x="-25%" y="-20%" width="150%" height="150%">' +
+            '<feGaussianBlur stdDeviation="2.5" result="blur"/>' +
+            '<feComposite in="SourceGraphic" in2="blur" operator="over"/>' +
+            '<feDropShadow dx="0" dy="3" stdDeviation="4"' +
+              ' flood-color="rgba(29,106,255,0.35)" flood-opacity="1"/>' +
           '</filter>' +
+
         '</defs>' +
 
-        // ── Pin teardrop body ──────────────────────────────────
-        '<g filter="url(#ds)">' +
-          '<path d="M22 52 C22 52 4 35 4 21 A18 18 0 0 1 40 21 C40 35 22 52 22 52Z"' +
-               ' fill="url(#pinG)" stroke="rgba(255,255,255,0.50)" stroke-width="1"/>' +
-          // Gloss on pin
-          '<path d="M22 52 C22 52 4 35 4 21 A18 18 0 0 1 40 21 C40 35 22 52 22 52Z"' +
-               ' fill="url(#gloss)"/>' +
+        // ── Outer glow ring ──────────────────────────────────
+        '<ellipse cx="24" cy="58" rx="7" ry="2.5"' +
+                 ' fill="rgba(29,106,255,0.18)"/>' +
+
+        // ── Glass pill body + stroke rim ────────────────────
+        '<g filter="url(#glow)">' +
+          '<path d="M24 57 C24 57 5 39 5 23 A19 19 0 0 1 43 23 C43 39 24 57 24 57Z"' +
+               ' fill="url(#pg)"' +
+               ' stroke="rgba(255,255,255,0.80)" stroke-width="1.5"/>' +
         '</g>' +
 
-        // ── Racket head ring ──────────────────────────────────
-        '<circle cx="22" cy="19" r="12"' +
-               ' fill="rgba(0,0,0,0.20)"' +
-               ' stroke="rgba(255,255,255,0.95)" stroke-width="1.8"/>' +
+        // ── Gloss sweep (top-left catch light) ───────────────
+        '<path d="M24 57 C24 57 5 39 5 23 A19 19 0 0 1 43 23 C43 39 24 57 24 57Z"' +
+             ' fill="url(#gl)"/>' +
 
-        // ── Inner oval (frame throat) ─────────────────────────
-        '<ellipse cx="22" cy="19" rx="7.5" ry="9"' +
+        // ── Racket head — glass disc ──────────────────────────
+        '<circle cx="24" cy="21" r="13.5"' +
+               ' fill="url(#hd)"' +
+               ' stroke="rgba(29,106,255,0.55)" stroke-width="1.6"/>' +
+
+        // ── Inner frame oval ─────────────────────────────────
+        '<ellipse cx="24" cy="21" rx="8.5" ry="10"' +
                ' fill="none"' +
-               ' stroke="rgba(255,255,255,0.55)" stroke-width="1"/>' +
+               ' stroke="rgba(29,106,255,0.35)" stroke-width="1"/>' +
 
-        // ── Strings — vertical (clipped to head circle) ───────
-        '<clipPath id="hc"><circle cx="22" cy="19" r="11.5"/></clipPath>' +
-        '<g clip-path="url(#hc)" stroke="rgba(255,255,255,0.88)" stroke-width="1">' +
-          '<line x1="17" y1="8"  x2="17" y2="30"/>' +
-          '<line x1="20" y1="7"  x2="20" y2="31"/>' +
-          '<line x1="22" y1="7"  x2="22" y2="31"/>' +
-          '<line x1="25" y1="7"  x2="25" y2="31"/>' +
-          '<line x1="28" y1="8"  x2="28" y2="30"/>' +
-          '<line x1="11" y1="15" x2="33" y2="15"/>' +
-          '<line x1="11" y1="19" x2="33" y2="19"/>' +
-          '<line x1="11" y1="23" x2="33" y2="23"/>' +
+        // ── Strings clipped to head ──────────────────────────
+        '<clipPath id="rc"><circle cx="24" cy="21" r="12.8"/></clipPath>' +
+        '<g clip-path="url(#rc)" stroke="rgba(255,255,255,0.75)" stroke-width="0.9">' +
+          '<line x1="19" y1="8.5" x2="19" y2="33.5"/>' +
+          '<line x1="22" y1="7.5" x2="22" y2="34.5"/>' +
+          '<line x1="24" y1="7"   x2="24" y2="35"/>' +
+          '<line x1="27" y1="7.5" x2="27" y2="34.5"/>' +
+          '<line x1="30" y1="8.5" x2="30" y2="33.5"/>' +
+          '<line x1="11.5" y1="16" x2="36.5" y2="16"/>' +
+          '<line x1="11"   y1="21" x2="37"   y2="21"/>' +
+          '<line x1="11.5" y1="26" x2="36.5" y2="26"/>' +
         '</g>' +
 
-        // ── Handle ────────────────────────────────────────────
-        '<rect x="20.2" y="31" width="3.6" height="9" rx="1.8"' +
-             ' fill="rgba(255,255,255,0.92)"/>' +
+        // ── Blue accent dot at string centre ─────────────────
+        '<circle cx="24" cy="21" r="2"' +
+               ' fill="rgba(29,106,255,0.65)"/>' +
 
-        // ── Tip dot ───────────────────────────────────────────
-        '<circle cx="22" cy="52" r="2.5" fill="rgba(255,255,255,0.70)"/>' +
+        // ── Handle ───────────────────────────────────────────
+        '<rect x="22.2" y="34.5" width="3.6" height="10" rx="1.8"' +
+             ' fill="rgba(29,106,255,0.50)"' +
+             ' stroke="rgba(255,255,255,0.60)" stroke-width="0.8"/>' +
+
+        // ── Tip point ────────────────────────────────────────
+        '<circle cx="24" cy="57" r="2"' +
+               ' fill="rgba(29,106,255,0.55)"' +
+               ' stroke="rgba(255,255,255,0.70)" stroke-width="0.8"/>' +
+
         '</svg>';
 
       var mk = new google.maps.Marker({
         position: pos, map: map, title: name,
         icon: {
           url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(racketSVG),
-          scaledSize: new google.maps.Size(44, 54),
-          anchor: new google.maps.Point(22, 52)
+          scaledSize: new google.maps.Size(48, 60),
+          anchor: new google.maps.Point(24, 57)
         }
       });
       (function(mk, idx, name, prov){
