@@ -464,13 +464,14 @@
     .lv-chip.lv-endpoint .lc-desc { color: #fff; }
     .lv-hint { font-size: 10px; color: var(--label3); margin-top: 3px; }
 
-    /* ─── FEED GRID (2-col mobile) ─── */
+    /* ─── FEED GRID (1-col mobile, 2-col tablet+) ─── */
     .feed-grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
+      display: flex;
+      flex-direction: column;
       gap: 10px;
     }
-    @media(min-width:600px){ .feed-grid { grid-template-columns: repeat(3,1fr); } }
+    @media(min-width:600px){ .feed-grid { display: grid; grid-template-columns: repeat(2,1fr); } }
+    @media(min-width:900px){ .feed-grid { grid-template-columns: repeat(3,1fr); } }
 
     /* ─── FEED HEADER ─── */
     .feed-hdr {
@@ -997,6 +998,7 @@ function initMap() {
       center: { lat: 17.9634, lng: 102.6132 },
       zoom: 13,
       mapTypeId: google.maps.MapTypeId.HYBRID,
+      mapId: "DEMO_MAP_ID",
       disableDefaultUI: true,
       gestureHandling: 'greedy',
       // HYBRID shows satellite imagery — POI icons are minimal by default
@@ -1019,6 +1021,12 @@ function initMap() {
     });
     infoWindow = new google.maps.InfoWindow();
     map.addListener('click', resetFilterAndDisplay);
+    // Pre-load AdvancedMarkerElement library so async calls work later
+    google.maps.importLibrary("marker").then(function(lib) {
+      window._AME = lib.AdvancedMarkerElement;
+      // Now load court data (needs _AME ready)
+      loadData();
+    });
   } catch(e) { console.error('Map init error:', e); }
 }
 
@@ -1030,19 +1038,11 @@ function getLocation() {
     if (userMarker) {
       userMarker.setPosition(pos);
     } else {
-      userMarker = new google.maps.Marker({
+      var userDot = document.createElement('div');
+      userDot.style.cssText = 'width:20px;height:20px;border-radius:50%;background:#1d6aff;border:3px solid #fff;box-shadow:0 0 0 4px rgba(29,106,255,0.25),0 2px 8px rgba(0,0,0,0.30);';
+      userMarker = new window._AME({
         position: pos, map: map,
-        icon: {
-          // User location — glowing blue circle, distinct from court markers
-          url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(
-            '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">' +
-            '<circle cx="12" cy="12" r="8" fill="#1d6aff" stroke="#ffffff" stroke-width="3"/>' +
-            '<circle cx="12" cy="12" r="12" fill="#1d6aff" fill-opacity="0.20"/>' +
-            '</svg>'
-          ),
-          scaledSize: new google.maps.Size(24, 24),
-          anchor: new google.maps.Point(12, 12)
-        },
+        content: userDot,
         title: "ຕຳແໜ່ງຂອງທ່ານ",
         zIndex: 999
       });
@@ -1088,60 +1088,41 @@ function _gasGet(action) {
   });
 }
 
-/* ───────────────── Hidden form POST helper ───────────────── */
-// POST ຜ່ານ hidden form → GAS ຮັບ e.parameter (ບໍ່ແມ່ນ e.postData)
-// ໃຊ້ JSONP callback ຮັບ response ກັບ
+/* ───────────────── JSONP POST helper ───────────────── */
+// ໃຊ້ JSONP GET ສຳລັບທຸກ action (GET ແລະ POST)
+// GAS doGet ຕ້ອງ handle action=savePost, action=verifyAndDelete ດ້ວຍ
+// ວິທີນີ້ reliable ກວ່າ iframe form ເພາະ GAS ຕອບ callback ໂດຍກົງ
 function _gasPost(body) {
+  // Build query string from body fields
+  var params = 'action=' + encodeURIComponent(body.action || '');
+  if (body.post)                   params += '&payload=' + encodeURIComponent(JSON.stringify(body.post));
+  if (body.rowIndex !== undefined) params += '&rowIndex=' + body.rowIndex;
+  if (body.code)                   params += '&code=' + encodeURIComponent(body.code);
+
   return new Promise(function(resolve, reject) {
     var cbName = '_cb' + (++_cbCounter) + '_' + Date.now();
     var timeout = setTimeout(function() {
-      cleanup();
-      reject(new Error('timeout'));
-    }, 20000);
-
-    function cleanup() {
-      clearTimeout(timeout);
       delete window[cbName];
-      var el = document.getElementById('_gas_iframe');
-      if (el) el.parentNode.removeChild(el);
-      var f = document.getElementById('_gas_form');
-      if (f) f.parentNode.removeChild(f);
-    }
+      if (script && script.parentNode) script.parentNode.removeChild(script);
+      reject(new Error('timeout — ກວດສອບ GAS URL ຫຼື internet'));
+    }, 25000);
 
     window[cbName] = function(data) {
-      cleanup();
+      clearTimeout(timeout);
+      delete window[cbName];
+      if (script && script.parentNode) script.parentNode.removeChild(script);
       if (data && data.error) reject(new Error(data.error));
       else resolve(data);
     };
 
-    // Encode body as JSON string ໃນ field "payload"
-    var iframeName = 'gas_iframe_' + _cbCounter;
-    var iframe = document.createElement('iframe');
-    iframe.id = '_gas_iframe';
-    iframe.name = iframeName;
-    iframe.style.display = 'none';
-    document.body.appendChild(iframe);
-
-    var form = document.createElement('form');
-    form.id = '_gas_form';
-    form.method = 'POST';
-    form.action = GAS_URL + '?callback=' + cbName;
-    form.target = iframeName;
-    form.style.display = 'none';
-
-    function addField(name, value) {
-      var inp = document.createElement('input');
-      inp.type = 'hidden'; inp.name = name; inp.value = value;
-      form.appendChild(inp);
-    }
-    // ສົ່ງ each field ແຍກ — GAS ຮັບໄດ້ຜ່ານ e.parameter
-    addField('action', body.action || '');
-    if (body.post)      addField('payload', JSON.stringify(body.post));
-    if (body.rowIndex !== undefined) addField('rowIndex', body.rowIndex);
-    if (body.code)      addField('code', body.code);
-
-    document.body.appendChild(form);
-    form.submit();
+    var script = document.createElement('script');
+    script.src = GAS_URL + '?' + params + '&callback=' + cbName + '&t=' + Date.now();
+    script.onerror = function() {
+      clearTimeout(timeout);
+      delete window[cbName];
+      reject(new Error('ໂຫຼດ script ຜິດພາດ — ກວດ GAS URL'));
+    };
+    document.head.appendChild(script);
   });
 }
 
@@ -1166,7 +1147,7 @@ function loadData() {
 function searchCourts() { filterAndDisplay(); }
 
 function clearMarkers() {
-  markers.forEach(function(mk){ mk.setMap(null); });
+  markers.forEach(function(mk){ mk.map = null; });
   markers = [];
 }
 
@@ -1269,16 +1250,11 @@ function filterAndDisplay() {
         '<circle cx="22" cy="52" r="2.5" fill="rgba(255,255,255,0.70)"/>' +
         '</svg>';
 
-      var mk = new google.maps.Marker({
-        position: pos, map: map,
-        title: name,
-        icon: {
-          url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(racketSVG),
-          scaledSize: new google.maps.Size(44, 54),
-          anchor: new google.maps.Point(22, 52)
-        }
-      });
-      (function(mk, idx, name, prov, pos){
+      var pinEl = document.createElement('div');
+      pinEl.innerHTML = racketSVG;
+      pinEl.style.cssText = 'cursor:pointer;';
+      var mk = new window._AME({ position: pos, map: map, content: pinEl, title: name });
+      (function(mk, idx, name, prov){
         mk.addListener('click', function(){
           infoWindow.setContent(
             '<div style="font-family:system-ui,sans-serif;padding:4px 2px;">' +
@@ -1289,7 +1265,7 @@ function filterAndDisplay() {
           infoWindow.open(map, mk);
           showSingleCourt(idx);
         });
-      })(mk, idx, name, prov, pos);
+      })(mk, idx, name, prov);
       markers.push(mk);
     }
 
@@ -1342,8 +1318,11 @@ function goToCourtOnMap(courtName) {
       showSingleCourt(found);
       // Open infoWindow on the matching marker
       var mk = markers.find(function(m){
-        var p = m.getPosition();
-        return Math.abs(p.lat()-lat)<0.0001 && Math.abs(p.lng()-lng)<0.0001;
+        var p = m.position;
+        if (!p) return false;
+        var mlat = typeof p.lat === 'function' ? p.lat() : p.lat;
+        var mlng = typeof p.lng === 'function' ? p.lng() : p.lng;
+        return Math.abs(mlat-lat)<0.0001 && Math.abs(mlng-lng)<0.0001;
       });
       if (mk && infoWindow) {
         infoWindow.setContent(
@@ -1434,13 +1413,71 @@ function submitPost() {
     postDate:  dateEl.value
   };
 
+  // Disable button while submitting
+  var btn = document.querySelector('.btn-blue[onclick="submitPost()"]');
+  if (btn) { btn.disabled = true; btn.textContent = 'ກຳລັງສົ່ງ...'; }
+
   _gasPost({ action: 'savePost', post: post })
     .then(function(res) {
       if (res.error) { showToast("ຜິດພາດ: " + res.error); return; }
-      alert("[OK] ປະກາດສຳເລັດ!\n\n[Code] ລະຫັດລົບ: " + res.deleteCode + "\n\n[!] ຈົດໄວ້!");
+
+      // Show delete code in a nice toast + inline banner (no blocking alert)
+      var code = res.deleteCode || '???';
+      showDeleteCodeBanner(code);
+
+      // Clear form fields
+      document.getElementById('postName').value = '';
+      document.getElementById('whatsappNumber').value = '';
+      document.getElementById('peopleCount').value = '';
+      document.getElementById('startTime').value = '';
+      document.getElementById('endTime').value = '';
+      rangeStart = -1; rangeEnd = -1; updateRailUI();
+
+      // Auto-refresh feed immediately
       loadFeed();
     })
-    .catch(function(err){ showToast("ຜິດພາດ: " + err); });
+    .catch(function(err){
+      showToast("ຜິດພາດ: " + (err && err.message ? err.message : err));
+    })
+    .finally(function() {
+      if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-paper-plane"></i>&nbsp; ປະກາດ'; }
+    });
+}
+
+/* ─── Delete code banner (replaces blocking alert) ─── */
+function showDeleteCodeBanner(code) {
+  // Remove existing banner if any
+  var old = document.getElementById('_codeB');
+  if (old) old.parentNode.removeChild(old);
+
+  var banner = document.createElement('div');
+  banner.id = '_codeB';
+  banner.style.cssText = [
+    'background:linear-gradient(135deg,rgba(52,199,89,0.22),rgba(29,106,255,0.18))',
+    'border:1px solid rgba(52,199,89,0.40)',
+    'border-radius:16px',
+    'padding:14px 16px',
+    'margin-bottom:14px',
+    'font-size:13px',
+    'position:relative',
+    'backdrop-filter:blur(12px)',
+    '-webkit-backdrop-filter:blur(12px)'
+  ].join(';');
+  banner.innerHTML =
+    '<p style="font-weight:700;color:#1a8f3a;margin:0 0 6px;">ປະກາດສຳເລັດ!</p>' +
+    '<p style="margin:0 0 4px;color:#1c1c1e;">ລະຫັດລົບໂພສຂອງທ່ານ:</p>' +
+    '<div style="display:flex;align-items:center;gap:10px;">' +
+      '<span id="_codeSpan" style="font-size:22px;font-weight:800;letter-spacing:4px;color:#1d6aff;">' + code + '</span>' +
+      '<button onclick="navigator.clipboard.writeText(document.getElementById(\"_codeSpan\").textContent).then(function(){showToast(\"ຄັດລອກລະຫັດແລ້ວ\")})" ' +
+        'style="background:rgba(29,106,255,0.14);border:none;border-radius:8px;padding:5px 10px;font-size:11px;font-weight:700;color:#1d6aff;cursor:pointer;">ຄັດລອກ</button>' +
+    '</div>' +
+    '<p style="font-size:11px;color:rgba(60,60,67,0.55);margin:6px 0 0;">ຈົດໄວ້! ໃຊ້ລະຫັດນີ້ເພື່ອລົບໂພສຂອງທ່ານ</p>' +
+    '<button onclick="this.parentNode.parentNode.removeChild(this.parentNode)" ' +
+      'style="position:absolute;top:8px;right:10px;background:none;border:none;font-size:16px;cursor:pointer;color:rgba(60,60,67,0.45);">×</button>';
+
+  // Insert banner before feed section
+  var feedHdr = document.querySelector('.feed-hdr');
+  if (feedHdr) feedHdr.parentNode.insertBefore(banner, feedHdr);
 }
 
 /* ───────────────── LOAD FEED ───────────────── */
@@ -1502,8 +1539,8 @@ function confirmDelete(rowIndex) {
 /* ───────────────── INIT ───────────────── */
 window.onload = function() {
   buildLevelRail();
-  // initMap() is called by Google Maps API via &callback=initMap
-  loadData();
+  // initMap() called by Google Maps callback — it triggers loadData() after AME loads
+  // loadData() is now called inside initMap() once AdvancedMarkerElement is ready
   loadFeed();
   var today=new Date().toISOString().split('T')[0];
   var d=document.getElementById('postDate');
@@ -1511,6 +1548,6 @@ window.onload = function() {
 };
 </script>
   <!-- Google Maps API — callback=initMap so map starts after API loads -->
-  <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyCvItAs5UNfCTEyhsaWXE4WI7XxibaQpDE&callback=initMap" async defer></script>
+  <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyCvItAs5UNfCTEyhsaWXE4WI7XxibaQpDE&loading=async&callback=initMap&libraries=marker" async defer></script>
 </body>
 </html>
