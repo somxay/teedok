@@ -990,17 +990,50 @@ function applySidebarFilter() {
   filterAndDisplay(); toggleSidebar();
 }
 
-/* ───────────────── MAP INIT (Google Maps — Satellite/Hybrid) ───────────────── */
+/* ───────────────── MAP INIT (Google Maps — Custom Styled) ───────────────── */
 function initMap() {
   try {
     map = new google.maps.Map(document.getElementById('map'), {
       center: { lat: 17.9634, lng: 102.6132 },
       zoom: 13,
-      mapTypeId: google.maps.MapTypeId.HYBRID,  // Satellite + road labels
+      // Use ROADMAP so styles can hide all POI/landmarks
+      mapTypeId: google.maps.MapTypeId.ROADMAP,
       disableDefaultUI: true,
       gestureHandling: 'greedy',
-      // Note: styles are only applied on ROADMAP type;
-      // HYBRID keeps satellite imagery with minimal Google UI
+      // Hide ALL Google default POI, landmarks, icons — show only our markers
+      styles: [
+        // ─── Hide all POI icons & labels ───────────────────────────
+        { featureType:'poi',                               stylers:[{visibility:'off'}] },
+        { featureType:'poi.attraction',                    stylers:[{visibility:'off'}] },
+        { featureType:'poi.business',                      stylers:[{visibility:'off'}] },
+        { featureType:'poi.government',                    stylers:[{visibility:'off'}] },
+        { featureType:'poi.medical',                       stylers:[{visibility:'off'}] },
+        { featureType:'poi.park',                          stylers:[{visibility:'off'}] },
+        { featureType:'poi.place_of_worship',              stylers:[{visibility:'off'}] },
+        { featureType:'poi.school',                        stylers:[{visibility:'off'}] },
+        { featureType:'poi.sports_complex',                stylers:[{visibility:'off'}] },
+        // ─── Hide transit (bus/train stations) ─────────────────────
+        { featureType:'transit',                           stylers:[{visibility:'off'}] },
+        { featureType:'transit.line',                      stylers:[{visibility:'off'}] },
+        { featureType:'transit.station',                   stylers:[{visibility:'off'}] },
+        // ─── Clean road labels ──────────────────────────────────────
+        { featureType:'road',      elementType:'labels.icon', stylers:[{visibility:'off'}] },
+        // ─── Soft iOS-toned colours ────────────────────────────────
+        { featureType:'landscape',          elementType:'geometry', stylers:[{color:'#eef2fb'}] },
+        { featureType:'landscape.man_made', elementType:'geometry', stylers:[{color:'#e8edf8'}] },
+        { featureType:'landscape.natural',  elementType:'geometry', stylers:[{color:'#dde8f5'}] },
+        { featureType:'water',              elementType:'geometry', stylers:[{color:'#b8d4ee'}] },
+        { featureType:'water',              elementType:'labels.text.fill', stylers:[{color:'#7aabcc'}] },
+        { featureType:'road',               elementType:'geometry',          stylers:[{color:'#ffffff'}] },
+        { featureType:'road.arterial',      elementType:'geometry',          stylers:[{color:'#f3f6fd'}] },
+        { featureType:'road.highway',       elementType:'geometry',          stylers:[{color:'#dce7f7'}] },
+        { featureType:'road.highway',       elementType:'geometry.stroke',   stylers:[{color:'#c5d8f0'}] },
+        { featureType:'road',               elementType:'labels.text.fill',  stylers:[{color:'#8899bb'}] },
+        { featureType:'road',               elementType:'labels.text.stroke',stylers:[{color:'#ffffff'}] },
+        { featureType:'administrative',     elementType:'labels.text.fill',  stylers:[{color:'#7788aa'}] },
+        { featureType:'administrative',     elementType:'labels.text.stroke',stylers:[{color:'#eef2ff'}] },
+        { featureType:'administrative.locality', elementType:'labels.text.fill', stylers:[{color:'#4466aa'}] }
+      ]
     });
     infoWindow = new google.maps.InfoWindow();
     map.addListener('click', resetFilterAndDisplay);
@@ -1039,7 +1072,7 @@ function getLocation() {
 
 /* ───────────────── GAS API CONFIG ───────────────── */
 // *** ປ່ຽນ URL ນີ້ຫຼັງຈາກ deploy GAS ເປັນ Web App ***
-var GAS_URL = 'https://script.google.com/macros/s/AKfycbxJnH63l5oAEnaVo4jnn0KskGyzfCmYfzQDwYzYC9qdYym39rrzYBcI4-wUeVCdZhca/exec';
+var GAS_URL = 'https://script.google.com/macros/s/PASTE_YOUR_DEPLOYMENT_ID_HERE/exec';
 
 /* ───────────────── JSONP helper (GET) ───────────────── */
 // JSONP bypass CORS ໄດ້ ເພາະໃຊ້ <script> tag ແທນ fetch()
@@ -1192,25 +1225,35 @@ function filterAndDisplay() {
     if (hasCoord) {
       var pos = {lat:lat, lng:lng};
       bounds.extend(pos);
-      // Badminton racket SVG marker — visible on dark satellite background
+      // Badminton racket SVG — iOS blue tone, clean on light map background
       var racketSVG =
-        '<svg xmlns="http://www.w3.org/2000/svg" width="40" height="48" viewBox="0 0 40 48">' +
-        // Drop shadow under pin
-        '<ellipse cx="20" cy="46" rx="8" ry="3" fill="rgba(0,0,0,0.30)"/>' +
-        // Pin body (orange pill)
-        '<path d="M20 44 C20 44 6 30 6 18 A14 14 0 0 1 34 18 C34 30 20 44 20 44Z" fill="#ff7b00" stroke="#fff" stroke-width="1.5"/>' +
-        // Racket head (circle outline)
-        '<circle cx="20" cy="16" r="9" fill="none" stroke="#ffffff" stroke-width="1.8"/>' +
-        // Strings — vertical
-        '<line x1="17" y1="7.5" x2="17" y2="24.5" stroke="#fff" stroke-width="0.9" opacity="0.85"/>' +
-        '<line x1="20" y1="7"   x2="20" y2="25"   stroke="#fff" stroke-width="0.9" opacity="0.85"/>' +
-        '<line x1="23" y1="7.5" x2="23" y2="24.5" stroke="#fff" stroke-width="0.9" opacity="0.85"/>' +
-        // Strings — horizontal
-        '<line x1="11" y1="13" x2="29" y2="13" stroke="#fff" stroke-width="0.9" opacity="0.85"/>' +
-        '<line x1="11" y1="16" x2="29" y2="16" stroke="#fff" stroke-width="0.9" opacity="0.85"/>' +
-        '<line x1="11" y1="19" x2="29" y2="19" stroke="#fff" stroke-width="0.9" opacity="0.85"/>' +
+        '<svg xmlns="http://www.w3.org/2000/svg" width="40" height="50" viewBox="0 0 40 50">' +
+        // Drop shadow
+        '<ellipse cx="20" cy="48" rx="7" ry="2.5" fill="rgba(29,106,255,0.22)"/>' +
+        // Pin teardrop — gradient blue matching iOS accent
+        '<defs>' +
+          '<linearGradient id="pg" x1="0" y1="0" x2="1" y2="1">' +
+            '<stop offset="0%" stop-color="#60a5fa"/>' +
+            '<stop offset="100%" stop-color="#1d4ed8"/>' +
+          '</linearGradient>' +
+        '</defs>' +
+        '<path d="M20 46 C20 46 5 31 5 19 A15 15 0 0 1 35 19 C35 31 20 46 20 46Z" fill="url(#pg)" stroke="rgba(255,255,255,0.70)" stroke-width="1.2"/>' +
+        // Racket head — white circle
+        '<circle cx="20" cy="17" r="10" fill="rgba(255,255,255,0.18)" stroke="rgba(255,255,255,0.95)" stroke-width="1.8"/>' +
+        // Inner oval (sweet spot tint)
+        '<ellipse cx="20" cy="17" rx="6" ry="7" fill="rgba(255,255,255,0.10)" stroke="rgba(255,255,255,0.60)" stroke-width="0.9"/>' +
+        // Strings — vertical (3)
+        '<line x1="17" y1="7.5" x2="17" y2="26.5" stroke="rgba(255,255,255,0.80)" stroke-width="0.9"/>' +
+        '<line x1="20" y1="7"   x2="20" y2="27"   stroke="rgba(255,255,255,0.85)" stroke-width="0.9"/>' +
+        '<line x1="23" y1="7.5" x2="23" y2="26.5" stroke="rgba(255,255,255,0.80)" stroke-width="0.9"/>' +
+        // Strings — horizontal (3)
+        '<line x1="10" y1="14" x2="30" y2="14" stroke="rgba(255,255,255,0.80)" stroke-width="0.9"/>' +
+        '<line x1="10" y1="17" x2="30" y2="17" stroke="rgba(255,255,255,0.85)" stroke-width="0.9"/>' +
+        '<line x1="10" y1="20" x2="30" y2="20" stroke="rgba(255,255,255,0.80)" stroke-width="0.9"/>' +
         // Handle
-        '<rect x="18.5" y="25" width="3" height="8" rx="1.5" fill="#ffffff" opacity="0.90"/>' +
+        '<rect x="18.8" y="27" width="2.4" height="7" rx="1.2" fill="rgba(255,255,255,0.90)"/>' +
+        // Gloss highlight on pin
+        '<ellipse cx="16" cy="14" rx="4" ry="5" fill="rgba(255,255,255,0.15)"/>' +
         '</svg>';
 
       var mk = new google.maps.Marker({
@@ -1218,8 +1261,8 @@ function filterAndDisplay() {
         title: name,
         icon: {
           url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(racketSVG),
-          scaledSize: new google.maps.Size(40, 48),
-          anchor: new google.maps.Point(20, 44)
+          scaledSize: new google.maps.Size(40, 50),
+          anchor: new google.maps.Point(20, 46)
         }
       });
       (function(mk, idx, name, prov, pos){
