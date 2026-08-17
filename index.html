@@ -466,11 +466,12 @@
 
     /* ─── FEED GRID (2-col mobile, 3-col desktop) ─── */
     .feed-grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
+      display: flex;
+      flex-direction: column;
       gap: 10px;
     }
-    @media(min-width:900px){ .feed-grid { grid-template-columns: repeat(3,1fr); } }
+    @media(min-width:600px){ .feed-grid { display:grid; grid-template-columns:1fr 1fr; } }
+    @media(min-width:900px){ .feed-grid { grid-template-columns:repeat(3,1fr); } }
 
     /* ─── FEED HEADER ─── */
     .feed-hdr {
@@ -786,7 +787,7 @@
     <p><i class="fas fa-list-ul" style="margin-right:5px;"></i>ປະກາດຫຼ້າສຸດ</p>
     <button onclick="loadFeed()"><i class="fas fa-rotate-right"></i> ໂຫຼດໃໝ່</button>
   </div>
-  <div id="feedContainer" class="feed-grid"><div class="spinner" style="grid-column:1/-1;"></div></div>
+  <div id="feedContainer" class="feed-grid"><div class="spinner"></div></div>
 </div>
 
 <!-- ══════════════ SIDEBAR ══════════════ -->
@@ -996,11 +997,31 @@ function initMap() {
     map = new google.maps.Map(document.getElementById('map'), {
       center: { lat: 17.9634, lng: 102.6132 },
       zoom: 13,
-      mapTypeId: google.maps.MapTypeId.HYBRID,
-      // mapId not needed — using classic google.maps.Marker with custom SVG icon
+      mapTypeId: google.maps.MapTypeId.ROADMAP,
       disableDefaultUI: true,
-      gestureHandling: 'greedy'
-      // HYBRID: satellite imagery, POI minimal by default — no styles needed
+      gestureHandling: 'greedy',
+      styles: [
+        { featureType:'poi',               stylers:[{visibility:'off'}] },
+        { featureType:'poi.attraction',    stylers:[{visibility:'off'}] },
+        { featureType:'poi.business',      stylers:[{visibility:'off'}] },
+        { featureType:'poi.government',    stylers:[{visibility:'off'}] },
+        { featureType:'poi.medical',       stylers:[{visibility:'off'}] },
+        { featureType:'poi.park',          stylers:[{visibility:'off'}] },
+        { featureType:'poi.place_of_worship', stylers:[{visibility:'off'}] },
+        { featureType:'poi.school',        stylers:[{visibility:'off'}] },
+        { featureType:'poi.sports_complex',stylers:[{visibility:'off'}] },
+        { featureType:'transit',           stylers:[{visibility:'off'}] },
+        { featureType:'transit.line',      stylers:[{visibility:'off'}] },
+        { featureType:'transit.station',   stylers:[{visibility:'off'}] },
+        { featureType:'road', elementType:'labels.icon', stylers:[{visibility:'off'}] },
+        { featureType:'landscape',   elementType:'geometry', stylers:[{color:'#eef2fb'}] },
+        { featureType:'water',       elementType:'geometry', stylers:[{color:'#b8d4ee'}] },
+        { featureType:'road',        elementType:'geometry', stylers:[{color:'#ffffff'}] },
+        { featureType:'road.arterial', elementType:'geometry', stylers:[{color:'#f0f4fd'}] },
+        { featureType:'road.highway',  elementType:'geometry', stylers:[{color:'#dce7f7'}] },
+        { featureType:'road',        elementType:'labels.text.fill', stylers:[{color:'#8899bb'}] },
+        { featureType:'administrative.locality', elementType:'labels.text.fill', stylers:[{color:'#4466aa'}] }
+      ]
     });
     infoWindow = new google.maps.InfoWindow();
     map.addListener('click', resetFilterAndDisplay);
