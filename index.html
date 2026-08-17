@@ -1391,12 +1391,10 @@ function submitPost() {
       // doGet returns: { success: true, deleteCode: "123" }
       // fallback: res itself may be the code string
       var code = res.deleteCode || res.code || (typeof res === 'string' ? res : null);
-      if (!code) {
-        // If GAS returned success but no code, show success without code
-        console.warn('GAS response:', JSON.stringify(res));
-        showToast("ປະກາດສຳເລັດ! (ກວດ console ເພື່ອ debug ລະຫັດ)");
-      } else {
+      if (code) {
         showDeleteCodeBanner(code);
+      } else {
+        showToast("ປະກາດສຳເລັດ!");
       }
 
       // Clear form fields
